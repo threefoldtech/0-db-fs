@@ -1,8 +1,15 @@
 #ifndef ZDBFS_H
     #define ZDBFS_H
 
-    #define zdbfs_debug printf
-    #define BLOCK_SIZE  4096
+    #ifndef RELEASE
+        #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
+        #define zdbfs_debug(...) { printf(__VA_ARGS__); }
+    #else
+        #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
+        #define zdbfs_debug(...) ((void)0)
+    #endif
+
+    #define BLOCK_SIZE  (128 * 1024)
 
     typedef struct zdbfs_t {
         redisContext *mdctx;

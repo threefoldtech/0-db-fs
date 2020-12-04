@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
+#include <errno.h>
 #include "zdbfs.h"
 #include "zdb.h"
 #include "inode.h"
@@ -63,15 +64,22 @@ void diep(char *str) {
     exit(EXIT_FAILURE);
 }
 
+// propagate an error to fuse with verbosity
+void zdbfs_fuse_error(fuse_req_t req, int err) {
+    zdbfs_debug("[-] request error: %s\n", strerror(err));
+    fuse_reply_err(req, err);
+}
+
+
+
 //
 // fuse syscall implementation
 //
 static void zdbfs_fuse_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct stat stbuf;
-    zdb_inode_t *inode;
     (void) fi;
 
-    zdbfs_debug("[+] getattr: ino: %ld\n", ino);
+    zdbfs_debug("[+] syscall: getattr: ino: %ld\n", ino);
 
     if(zdbfs_inode_stat(req, ino, &stbuf)) {
         fuse_reply_err(req, ENOENT);
@@ -87,7 +95,7 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
     zdb_inode_t *inode;
     (void) fi;
 
-    zdbfs_debug("[+] setattr: ino: %ld\n", ino);
+    zdbfs_debug("[+] syscall: setattr: ino: %ld\n", ino);
 
     // fetching current inode state
     if(!(inode = zdbfs_fetch_inode(req, ino))) {
@@ -143,7 +151,7 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
     struct fuse_entry_param e;
     int found = 0;
 
-    zdbfs_debug("[+] lookup: parent: %ld, name: %s\n", parent, name);
+    zdbfs_debug("[+] syscall: lookup: parent: %ld, name: %s\n", parent, name);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, parent)))
@@ -152,24 +160,22 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
     // fillin direntry with inode contents
     zdbfs_debug("[+] lookup: %lu: okay, looking for entry: %s\n", parent, name);
     zdb_dir_t *dir = inode->extend[0];
+    memset(&e, 0, sizeof(e));
 
     for(size_t i = 0; i < dir->length; i++) {
         zdb_direntry_t *entry = dir->entries[i];
         if(strcmp(entry->name, name) == 0) {
-            memset(&e, 0, sizeof(e));
 
-            if(zdbfs_inode_stat(req, entry->ino, &e.attr)) {
-                fuse_reply_err(req, ENOENT);
-                return; // FIXME
-            }
+            if(zdbfs_inode_stat(req, entry->ino, &e.attr))
+                break;
 
             e.ino = entry->ino;
             e.attr_timeout = 10.0;
             e.entry_timeout = 10.0;
 
             fuse_reply_entry(req, &e);
-
             found = 1;
+
             break;
         }
     }
@@ -190,22 +196,16 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
         return;
 
     // new file
-    zdb_inode_t *create = zdbfs_inode_new_file(req, 0644);
-    buffer_t newfile = zdbfs_inode_serialize(create);
-
-    if((ino = zdb_set(fs->mdctx, 0, newfile.buffer, newfile.length)) == 0)
+    zdb_inode_t *create = zdbfs_inode_new_file(req, mode);
+    if((ino = zdbfs_inode_store(fs->mdctx, create, 0)) == 0)
         dies("create", "could not create inode");
-
-    zdbfs_inode_dump(inode);
 
     // update directory with new entry
     zdb_dir_t *dir = inode->extend[0];
     dir = zdbfs_dir_append(dir, zdbfs_direntry_new(ino, name));
     inode->extend[0] = dir;
 
-    buffer_t save = zdbfs_inode_serialize(inode);
-
-    if(zdb_set(fs->mdctx, parent, save.buffer, save.length) != parent)
+    if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent)
         dies("create", "could not update parent directory");
 
     memset(&e, 0, sizeof(e));
@@ -214,21 +214,17 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
     e.entry_timeout = 1.0;
 
     zdbfs_inode_to_stat(&e.attr, create);
-    free(create->extend[0]);
-    free(create);
+    zdbfs_inode_free(create);
+    zdbfs_inode_free(inode);
 
     fuse_reply_create(req, &e, fi);
 }
-
-struct dirbuf {
-    char *p;
-    size_t size;
-};
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
 static int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize, off_t off, size_t maxsize)
 {
+    // FIXME
     if (off < bufsize)
         return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
     else
@@ -240,7 +236,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     zdbfs_t *fs = fuse_req_userdata(req);
 
-    zdbfs_debug("[+] mkdir: parent: %ld, name: %s\n", parent, name);
+    zdbfs_debug("[+] syscall: mkdir: parent: %ld, name: %s\n", parent, name);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, parent)))
@@ -251,18 +247,30 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     newdir->uid = ctx->uid;
     newdir->gid = ctx->gid;
 
+    uint32_t ino;
+    if((ino = zdbfs_inode_store(fs->mdctx, newdir, 0)) == 0) {
+        fuse_reply_err(req, EIO);
+        // FREE
+        return;
+    }
+
+    /*
     buffer_t xnewdir = zdbfs_inode_serialize(newdir);
 
-    uint32_t ino;
     if((ino = zdb_set(fs->mdctx, 0, xnewdir.buffer, xnewdir.length)) == 0)
         dies("mkdir", "could not create new directory");
+    */
 
     zdb_dir_t *dir = inode->extend[0];
     dir = zdbfs_dir_append(dir, zdbfs_direntry_new(ino, name));
+    inode->extend[0] = dir;
 
-    buffer_t xparent = zdbfs_inode_serialize(inode);
-    if(zdb_set(fs->mdctx, parent, xparent.buffer, xparent.length) != parent)
-        dies("mkdir", "could not update parent directory");
+    if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent) {
+        printf("could not update parent\n");
+        fuse_reply_err(req, EIO);
+        // FREE
+        return;
+    }
 
     memset(&e, 0, sizeof(e));
     e.ino = ino;
@@ -270,6 +278,8 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     e.entry_timeout = 1.0;
 
     zdbfs_inode_to_stat(&e.attr, newdir);
+    zdbfs_inode_free(newdir);
+    zdbfs_inode_free(inode);
 
     fuse_reply_entry(req, &e);
 }
@@ -277,7 +287,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
 
-    zdbfs_debug("[+] readdir: %lu: request\n", ino);
+    zdbfs_debug("[+] syscall: readdir: %lu: request\n", ino);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, ino)))
@@ -287,41 +297,57 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     zdbfs_debug("[+] readdir: %lu: okay, fillin entries\n", ino);
     zdb_dir_t *dir = inode->extend[0];
 
-    struct dirbuf bb, *b;
-    b = &bb;
-    memset(b, 0, sizeof(bb));
+    buffer_t buffer;
+    buffer.length = 0;
+
+    // first pass: computing total size
+    for(size_t i = 0; i < dir->length; i++) {
+        zdb_direntry_t *entry = dir->entries[i];
+        buffer.length += fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+    }
+
+    // allocate buffer large enough
+    if(!(buffer.buffer = calloc(buffer.length, 1)))
+        diep("readdir: calloc");
+
+    // fill in the buffer for each entries
+    struct stat stbuf;
+    memset(&stbuf, 0, sizeof(stbuf));
+    uint8_t *ptr = buffer.buffer;
 
     for(size_t i = 0; i < dir->length; i++) {
         zdb_direntry_t *entry = dir->entries[i];
-        struct stat stbuf;
-        size_t oldsize = b->size;
+        size_t cursize = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+        off_t eoff = (off_t) ptr + cursize;
 
-        // FIXME
-        b->size += fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
-        b->p = (char *) realloc(b->p, b->size);
-        memset(&stbuf, 0, sizeof(stbuf));
         stbuf.st_ino = entry->ino;
-        fuse_add_direntry(req, b->p + oldsize, b->size - oldsize, entry->name, &stbuf, b->size);
+        fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, eoff);
+
+        ptr += cursize;
     }
 
-    reply_buf_limited(req, bb.p, bb.size, off, size);
-    free(bb.p);
+    // FIXME
+    reply_buf_limited(req, buffer.buffer, buffer.length, off, size);
+
+    free(buffer.buffer);
+    zdbfs_inode_free(inode);
 }
-
-
 
 static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     zdb_inode_t *inode;
+    int ok = 1;
 
-    zdbfs_debug("[+] open: ino %lu: request\n", ino);
+    zdbfs_debug("[+] syscall: open: ino %lu: request\n", ino);
 
     if(!(inode = zdbfs_fetch_inode(req, ino)))
         return;
 
     if(S_ISDIR(inode->mode)) {
         fuse_reply_err(req, EISDIR);
-        return;
+        ok = 0;
     }
+
+    zdbfs_inode_free(inode);
 
     /*
     if((fi->flags & O_ACCMODE) != O_RDONLY) {
@@ -330,25 +356,17 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     }
     */
 
-    fuse_reply_open(req, fi);
+    if(ok)
+        fuse_reply_open(req, fi);
 }
 
 static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
     zdbfs_t *fs = fuse_req_userdata(req);
-    zdbfs_debug("[+] read: ino %lu: size %lu, off: %lu\n", ino, size, off);
+    size_t fetched = 0;
+    char *buffer;
 
-    if(off != 0) {
-        printf("offset zero needed\n");
-        fuse_reply_err(req, EIO);
-        return;
-    }
-
-    if(size > BLOCK_SIZE) {
-        printf("size too large\n");
-        fuse_reply_err(req, EIO);
-        return;
-    }
+    zdbfs_debug("[+] syscall: read: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_inode(req, ino))) {
@@ -357,63 +375,115 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         return;
     }
 
-    uint32_t blockid = zdbfs_offset_to_block(off);
+    // zdbfs_inode_dump(inode);
+
     zdb_blocks_t *blocks = inode->extend[0];
 
-    zdbfs_inode_dump(inode);
-    printf(">> BLOCK ID: %u\n", blocks->blocks[blockid]);
+    if(!(buffer = malloc(size)))
+        diep("read: malloc buffer");
 
-    zdb_reply_t *reply;
-    if(!(reply = zdb_get(fs->datactx, blocks->blocks[blockid]))) {
-        printf("could not find inode\n");
-        fuse_reply_err(req, EIO);
-        return;
+    // for each block to send
+    while(fetched < size) {
+        uint32_t block = zdbfs_offset_to_block(off);
+
+        if(block >= blocks->length) {
+            zdbfs_debug("[+] read: block ouf of bounds, eof reached\n");
+            fetched = 0;
+            break;
+        }
+
+        uint32_t blockid = blocks->blocks[block];
+        zdbfs_debug("[+] read: fetching block: %u [%u]\n", block, blockid);
+
+        zdb_reply_t *reply;
+        if(!(reply = zdb_get(fs->datactx, blockid))) {
+            printf("could not find block\n");
+            fuse_reply_err(req, EIO);
+            free(buffer);
+            return;
+        }
+
+        // fetched block contains something we need
+        // the full block can be used, or partial content
+        // partial content can be anywhere and any length inside
+        // the block
+
+        // checking if request is aligned with our block
+        size_t alignment = (off % BLOCK_SIZE);
+
+        // computing remaining size to fetch
+        size_t remain = size - fetched;
+
+        // checking if the whole block can be used or not
+        size_t chunk = (remain <= reply->length - alignment) ? remain : reply->length - alignment;
+
+        zdbfs_debug("[+] read: copying %lu bytes (block align: %lu)\n", chunk, alignment);
+        memcpy(buffer + fetched, reply->value + alignment, chunk);
+
+        // cleaning block read
+        zdb_free(reply);
+
+        fetched += chunk;
+        off += chunk;
     }
 
-    reply_buf_limited(req, (const char *) reply->value, reply->length, off, size);
+    fuse_reply_buf(req, buffer, fetched);
+
+    free(buffer);
+    zdbfs_inode_free(inode);
 }
+
 static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
-    zdbfs_debug("[+] write: ino %lu: size %lu, off: %lu\n", ino, size, off);
+    zdbfs_debug("[+] syscall: write: ino %lu: size %lu, off: %lu\n", ino, size, off);
     zdbfs_t *fs = fuse_req_userdata(req);
+    size_t sent = 0;
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_inode(req, ino))) {
+        printf("could not fetch inode\n");
         fuse_reply_write(req, 0);
         return;
     }
 
-    if(off != 0) {
-        printf("offset zero needed\n");
-        fuse_reply_write(req, 0);
+    // zdb_blocks_t *blocks = inode->extend[0];
+
+    // sending each blocks
+    while(sent < size) {
+        size_t block = zdbfs_offset_to_block(off + sent);
+        uint32_t blockid;
+        size_t towrite = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
+        zdbfs_debug("[+] write: writing %lu bytes (sent %lu / %lu)\n", towrite, sent, size);
+
+        if((blockid = zdb_set(fs->datactx, 0, buf + sent, towrite)) == 0) {
+            dies("write", "cannot write block to backend");
+        }
+
+        zdbfs_inode_set_block(inode, block, blockid);
+
+        sent += towrite;
+        inode->size += towrite; // FIXME: does not support overwrite
+    }
+
+    if(zdbfs_inode_store(fs->mdctx, inode, ino) == 0) {
+        dies("write", "could not update inode blocks");
+    }
+
+    fuse_reply_write(req, sent);
+    zdbfs_inode_free(inode);
+}
+
+void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
+    /*
+    zdb_inode_t *inode;
+    if(!(inode = zdbfs_fetch_inode(req, parent))) {
+        printf("could not fetch inode\n");
+        fuse_reply_err(req, ENOENT);
         return;
     }
+    */
 
-    if(size > BLOCK_SIZE) {
-        printf("too large for now\n");
-        fuse_reply_write(req, 0);
-    }
-
-    //
-    // assume linear write for now
-    //
-
-    size_t block = zdbfs_offset_to_block(off);
-    uint32_t blockid;
-
-    if((blockid = zdb_set(fs->datactx, 0, buf, size)) == 0)
-        dies("write", "cannot write block to backend");
-
-    // FIXME
-    inode->size = size;
-
-    zdbfs_inode_set_block(inode, block, blockid);
-
-    buffer_t newinfo = zdbfs_inode_serialize(inode);
-    if(zdb_set(fs->mdctx, ino, newinfo.buffer, newinfo.length) != ino)
-        dies("mkdir", "could not update inode blocks");
-
-    fuse_reply_write(req, size);
+    zdbfs_fuse_error(req, ENOENT);
 }
 
 static const struct fuse_lowlevel_ops hello_ll_oper = {
@@ -426,13 +496,15 @@ static const struct fuse_lowlevel_ops hello_ll_oper = {
     .write      = zdbfs_fuse_write,
     .mkdir      = zdbfs_fuse_mkdir,
     .create     = zdbfs_fuse_create,
+    .unlink     = zdbfs_fuse_unlink,
 };
 
 int main(int argc, char *argv[]) {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct fuse_session *se;
     struct fuse_cmdline_opts opts;
-    struct fuse_loop_config config;
+    // struct fuse_loop_config config;
+
     zdbfs_t zdbfs = {
         .mdctx = NULL,
         .datactx = NULL,

@@ -52,7 +52,7 @@ static struct timespec zdbfs_time_sys(uint32_t source) {
 
 size_t zdbfs_offset_to_block(off_t off) {
     size_t block = off / BLOCK_SIZE;
-    printf("[+] offset %ld, block id: %lu\n", off, block);
+    zdbfs_debug("[+] offset %ld = block: %lu\n", off, block);
     return block;
 }
 
@@ -60,13 +60,30 @@ void zdbfs_inode_set_block(zdb_inode_t *inode, size_t block, uint32_t blockid) {
     zdb_blocks_t *blocks = inode->extend[0];
 
     if(block + 1 > blocks->length) {
-        if(!(inode->extend[0] = realloc(inode->extend[0], sizeof(uint32_t) * blocks->length + 1)))
+        size_t newlength = sizeof(zdb_blocks_t) + (sizeof(uint32_t) * (block + 1));
+
+        if(!(inode->extend[0] = realloc(blocks, newlength)))
             diep("blocks: realloc");
+
+        // update blocks pointer
+        blocks = inode->extend[0];
+
+        // initialize new blocks to zero
+        for(size_t i = blocks->length; i < block; i++)
+            blocks->blocks[i] = 0;
 
         blocks->length = block + 1;
     }
 
     blocks->blocks[block] = blockid;
+}
+
+size_t zdbfs_direntry_size(zdb_direntry_t *entry) {
+    // deleted entry
+    if(entry->size == 0)
+        return 0;
+
+    return sizeof(zdb_direntry_t) + entry->size + 1;
 }
 
 size_t zdbfs_inode_dir_size(zdb_dir_t *dir) {
@@ -127,6 +144,9 @@ zdb_inode_t *zdbfs_mkdir_empty(uint32_t parent, uint32_t mode) {
     return inode;
 }
 
+//
+// deserializer
+//
 zdb_inode_t *zdbfs_inode_deserialize_dir(zdb_inode_t *inode, uint8_t *buffer, size_t length) {
     (void) length;
     zdb_dir_t *dir, *xdir;
@@ -175,7 +195,8 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
     if(length < sizeof(zdb_inode_t))
         dies("deserialize", "wrong size from db");
 
-    if(!(inode = malloc(sizeof(zdb_inode_t) + sizeof(zdb_dir_t *))))
+    // allocate inode struct plus one pointer for extend
+    if(!(inode = malloc(sizeof(zdb_inode_t) + sizeof(void *))))
         diep("deserialize: malloc inode");
 
     // copy inode from buffer to inode, as it
@@ -187,6 +208,11 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
 
     return zdbfs_inode_deserialize_dir(inode, buffer, length);
 }
+
+
+//
+// serializer
+//
 
 buffer_t zdbfs_inode_serialize_file(zdb_inode_t *inode) {
     buffer_t buffer;
@@ -206,7 +232,7 @@ buffer_t zdbfs_inode_serialize_file(zdb_inode_t *inode) {
     memcpy(serial, inode, sizeof(zdb_inode_t));
 
     // set blocks
-    memcpy(&serial->extend[0], inode->extend[0], blen);
+    memcpy(&serial->extend[0], blocks, blen);
 
     // zdbd_fulldump(serial, inolen);
 
@@ -240,6 +266,11 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
 
     for(size_t i = 0; i < dir->length; i++) {
         zdb_direntry_t *entry = dir->entries[i];
+
+        // deleted entry, do not serialize it
+        if(entry->size == 0)
+            continue;
+
         size_t length = zdbfs_direntry_size(entry);
 
         memcpy(ptr, entry, length);
@@ -253,10 +284,6 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
 
     return buffer;
 
-}
-
-size_t zdbfs_direntry_size(zdb_direntry_t *entry) {
-    return sizeof(zdb_direntry_t) + entry->size + 1;
 }
 
 zdb_direntry_t *zdbfs_direntry_new(uint32_t ino, const char *name) {
@@ -395,15 +422,19 @@ zdb_inode_t *zdbfs_fetch_directory(fuse_req_t req, fuse_ino_t ino) {
 
 uint32_t zdbfs_inode_store(redisContext *backend, zdb_inode_t *inode, uint32_t ino) {
     buffer_t save = zdbfs_inode_serialize(inode);
+    uint32_t inoret;
 
-    if(zdb_set(backend, ino, save.buffer, save.length) != ino) {
+    inoret = zdb_set(backend, ino, save.buffer, save.length);
+
+    // returns zero
+    if(inoret == 0) {
         fprintf(stderr, "[-] zdbfs: store inode: failed\n");
         ino = 0;
     }
 
     free(save.buffer);
 
-    return ino;
+    return inoret;
 }
 
 zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
@@ -476,10 +507,10 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     }
 
     zdb_inode_t *inode = zdbfs_mkdir_empty(1, 0755);
-    buffer_t root = zdbfs_inode_serialize(inode);
-
-    if(zdb_set(fs->mdctx, 0, root.buffer, root.length) != 1)
+    if(zdbfs_inode_store(fs->mdctx, inode, 0) != 1)
         dies("could not create root directory", zreply->str);
+
+    zdbfs_inode_free(inode);
 
     //
     // create initial block
@@ -499,9 +530,6 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
         dies("could not create initial data message", zreply->str);
 
     freeReplyObject(zreply);
-
-    // FIXME
-    // free(root.buffer);
 
     return 0;
 }
