@@ -258,8 +258,8 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
     memcpy(serial, inode, sizeof(zdb_inode_t));
 
     // then copy the dir struct
-    zdb_dir_t *dir = inode->extend[0];
-    memcpy(&serial->extend[0], dir, sizeof(zdb_dir_t));
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    zdb_dir_t local = {.length = 0};
 
     // then copy each directory entries
     uint8_t *ptr = (uint8_t *) serial + sizeof(zdb_inode_t) + sizeof(zdb_dir_t);
@@ -275,7 +275,13 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
 
         memcpy(ptr, entry, length);
         ptr += length;
+
+        // count entries
+        local.length += 1;
     }
+
+    // copy dir header (count)
+    memcpy(&serial->extend[0], &local, sizeof(zdb_dir_t));
 
     // zdbd_fulldump(serial, inolen);
 
@@ -309,6 +315,23 @@ zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
 
     dir->entries[dir->length - 1] = entry;
 
+    return dir;
+}
+
+zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint32_t ino, const char *name) {
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    dir = zdbfs_dir_append(dir, zdbfs_direntry_new(ino, name));
+    zdbfs_inode_dir_set(inode, dir);
+
+    return dir;
+}
+
+zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode) {
+    return inode->extend[0];
+}
+
+zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir) {
+    inode->extend[0] = dir;
     return dir;
 }
 
