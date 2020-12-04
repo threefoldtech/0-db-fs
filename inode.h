@@ -22,4 +22,8 @@
     zdb_inode_t *zdbfs_fetch_inode(fuse_req_t req, fuse_ino_t ino);
     zdb_inode_t *zdbfs_fetch_directory(fuse_req_t req, fuse_ino_t ino);
     zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode);
+    void zdbfs_inode_free(zdb_inode_t *inode);
+    uint32_t zdbfs_inode_store(redisContext *backend, zdb_inode_t *inode, uint32_t ino);
+
+    int zdbfs_initialize_filesystem(zdbfs_t *fs);
 #endif

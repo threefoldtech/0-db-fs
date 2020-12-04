@@ -16,7 +16,7 @@
 #include "inode.h"
 
 int zdbfs_zdb_connect(zdbfs_t *fs) {
-    printf("[+] connecting metadata zdb\n");
+    zdbfs_debug("[+] backend: connecting metadata zdb\n");
 
     if(!(fs->mdctx = redisConnect("127.0.0.1", 9900)))
         diep("redis init");
@@ -26,7 +26,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
         return 1;
     }
 
-    printf("[+] connecting data zdb\n");
+    zdbfs_debug("[+] backend: connecting data zdb\n");
     if(!(fs->datactx = redisConnect("127.0.0.1", 9900)))
         diep("redis init");
 
@@ -124,84 +124,4 @@ void zdb_free(zdb_reply_t *reply) {
     freeReplyObject(reply->rreply);
     free(reply);
 }
-
-// first initialization of the fs
-//
-// entry 0 will be metadata about information regarding this
-// filesystem and additionnal stuff
-//
-// entry 1 will be the root directory of the system, which will
-// be empty in a first set
-int zdbfs_create(zdbfs_t *fs) {
-    zdb_reply_t *reply;
-    char *msg = "zdbfs version 0.1 debug header";
-    char *bmsg = "zdbfs block namespace";
-    uint32_t expected = 0;
-
-    printf("initial\n");
-
-    // checking if entry 0 exists
-    if((reply = zdb_get(fs->mdctx, 0))) {
-        if(strncmp((char *) reply->value, "zdbfs ", 6) == 0) {
-            printf("[+] init: metadata already contains a valid filesystem\n");
-            zdb_free(reply);
-            return 0;
-        }
-    }
-
-    //
-    // create initial entry
-    //
-    redisReply *zreply;
-
-    // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->mdctx, "SET %b %s", NULL, 0, msg)))
-        diep("redis: set basic metadata");
-
-    if(memcmp(zreply->str, &expected, zreply->len) != 0)
-        dies("could not create initial message", zreply->str);
-
-    freeReplyObject(zreply);
-
-
-    //
-    // create initial root directory (if not there)
-    //
-    if((reply = zdb_get(fs->mdctx, 1))) {
-        printf("[+] init: metadata already contains a valid root directory\n");
-        zdb_free(reply);
-        return 0;
-    }
-
-    zdb_inode_t *inode = zdbfs_mkdir_empty(1, 0755);
-    buffer_t root = zdbfs_inode_serialize(inode);
-
-    if(zdb_set(fs->mdctx, 0, root.buffer, root.length) != 1)
-        dies("could not create root directory", zreply->str);
-
-    //
-    // create initial block
-    //
-    if((reply = zdb_get(fs->datactx, 0))) {
-        printf("[+] init: data already contains a valid signature\n");
-        zdb_free(reply);
-        return 0;
-    }
-
-    // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->datactx, "SET %b %s", NULL, 0, bmsg)))
-        diep("redis: set basic data");
-
-    expected = 0;
-    if(memcmp(zreply->str, &expected, zreply->len) != 0)
-        dies("could not create initial data message", zreply->str);
-
-    freeReplyObject(zreply);
-
-    // FIXME
-    // free(root.buffer);
-
-    return 0;
-}
-
 

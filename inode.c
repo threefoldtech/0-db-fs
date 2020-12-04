@@ -309,6 +309,27 @@ void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode) {
     st->st_blocks = 0;
 }
 
+void zdbfs_dir_free(zdb_dir_t *dir) {
+    for(size_t i = 0; i < dir->length; i++)
+        free(dir->entries[i]);
+
+    free(dir);
+}
+
+void zdbfs_inode_free(zdb_inode_t *inode) {
+    if(S_ISDIR(inode->mode)) {
+        // free directory entries
+        zdbfs_dir_free(inode->extend[0]);
+    }
+
+    if(S_ISREG(inode->mode)) {
+        // free file blocks
+        free(inode->extend[0]);
+    }
+
+    free(inode);
+}
+
 int zdbfs_inode_stat(fuse_req_t req, fuse_ino_t ino, struct stat *stbuf) {
     zdbfs_t *fs = fuse_req_userdata(req);
     uint32_t inoid = ino;
@@ -321,10 +342,17 @@ int zdbfs_inode_stat(fuse_req_t req, fuse_ino_t ino, struct stat *stbuf) {
 
     zdb_inode_t *inode = zdbfs_inode_deserialize(reply->value, reply->length);
 
-	stbuf->st_ino = ino;
+    // initialize empty stat first
+    memset(stbuf, 0, sizeof(struct stat));
+
+    // copy our inode to stat struct
+    stbuf->st_ino = ino;
     zdbfs_inode_to_stat(stbuf, inode);
 
-	return 0;
+    zdbfs_inode_free(inode);
+    zdb_free(reply);
+
+    return 0;
 }
 
 zdb_inode_t *zdbfs_fetch_inode(fuse_req_t req, fuse_ino_t ino) {
@@ -341,11 +369,10 @@ zdb_inode_t *zdbfs_fetch_inode(fuse_req_t req, fuse_ino_t ino) {
     }
 
     zdb_inode_t *inode = zdbfs_inode_deserialize(reply->value, reply->length);
-    // FIXME: free
+    zdb_free(reply);
 
     return inode;
 }
-
 
 zdb_inode_t *zdbfs_fetch_directory(fuse_req_t req, fuse_ino_t ino) {
     zdb_inode_t *inode;
@@ -358,12 +385,25 @@ zdb_inode_t *zdbfs_fetch_directory(fuse_req_t req, fuse_ino_t ino) {
     // checking if this inode is a directory
     if(!S_ISDIR(inode->mode)) {
         zdbfs_debug("[+] directory: %lu: not a directory\n", ino);
-		fuse_reply_err(req, ENOTDIR);
+        fuse_reply_err(req, ENOTDIR);
         // FIXME: free
         return NULL;
     }
 
     return inode;
+}
+
+uint32_t zdbfs_inode_store(redisContext *backend, zdb_inode_t *inode, uint32_t ino) {
+    buffer_t save = zdbfs_inode_serialize(inode);
+
+    if(zdb_set(backend, ino, save.buffer, save.length) != ino) {
+        fprintf(stderr, "[-] zdbfs: store inode: failed\n");
+        ino = 0;
+    }
+
+    free(save.buffer);
+
+    return ino;
 }
 
 zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
@@ -385,6 +425,85 @@ zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
         diep("inode: new file: calloc");
 
     return create;
+}
+
+// first initialization of the fs
+//
+// entry 0 will be metadata about information regarding this
+// filesystem and additionnal stuff
+//
+// entry 1 will be the root directory of the system, which will
+// be empty in a first set
+int zdbfs_initialize_filesystem(zdbfs_t *fs) {
+    zdb_reply_t *reply;
+    char *msg = "zdbfs version 0.1 debug header";
+    char *bmsg = "zdbfs block namespace";
+    uint32_t expected = 0;
+
+    zdbfs_debug("[+] filesystem: checking backend\n");
+
+    // checking if entry 0 exists
+    if((reply = zdb_get(fs->mdctx, 0))) {
+        if(strncmp((char *) reply->value, "zdbfs ", 6) == 0) {
+            zdbfs_debug("[+] filesystem: metadata already contains a valid filesystem\n");
+            zdb_free(reply);
+            return 0;
+        }
+    }
+
+    //
+    // create initial entry
+    //
+    redisReply *zreply;
+
+    // cannot use zdb_set because id 0 is special
+    if(!(zreply = redisCommand(fs->mdctx, "SET %b %s", NULL, 0, msg)))
+        diep("redis: set basic metadata");
+
+    if(memcmp(zreply->str, &expected, zreply->len) != 0)
+        dies("could not create initial message", zreply->str);
+
+    freeReplyObject(zreply);
+
+
+    //
+    // create initial root directory (if not there)
+    //
+    if((reply = zdb_get(fs->mdctx, 1))) {
+        zdbfs_debug("[+] filesystem: metadata already contains a valid root directory\n");
+        zdb_free(reply);
+        return 0;
+    }
+
+    zdb_inode_t *inode = zdbfs_mkdir_empty(1, 0755);
+    buffer_t root = zdbfs_inode_serialize(inode);
+
+    if(zdb_set(fs->mdctx, 0, root.buffer, root.length) != 1)
+        dies("could not create root directory", zreply->str);
+
+    //
+    // create initial block
+    //
+    if((reply = zdb_get(fs->datactx, 0))) {
+        zdbfs_debug("[+] init: data already contains a valid signature\n");
+        zdb_free(reply);
+        return 0;
+    }
+
+    // cannot use zdb_set because id 0 is special
+    if(!(zreply = redisCommand(fs->datactx, "SET %b %s", NULL, 0, bmsg)))
+        diep("redis: set basic data");
+
+    expected = 0;
+    if(memcmp(zreply->str, &expected, zreply->len) != 0)
+        dies("could not create initial data message", zreply->str);
+
+    freeReplyObject(zreply);
+
+    // FIXME
+    // free(root.buffer);
+
+    return 0;
 }
 
 

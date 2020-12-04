@@ -66,18 +66,16 @@ void diep(char *str) {
 //
 // fuse syscall implementation
 //
-static void hello_ll_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+static void zdbfs_fuse_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct stat stbuf;
     zdb_inode_t *inode;
     (void) fi;
 
     zdbfs_debug("[+] getattr: ino: %ld\n", ino);
 
-    memset(&stbuf, 0, sizeof(stbuf));
-
     if(zdbfs_inode_stat(req, ino, &stbuf)) {
         fuse_reply_err(req, ENOENT);
-        return; // FIXME free
+        return;
     }
 
     fuse_reply_attr(req, &stbuf, 1.0);
@@ -91,13 +89,15 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
 
     zdbfs_debug("[+] setattr: ino: %ld\n", ino);
 
-    memset(&stbuf, 0, sizeof(stbuf));
-
+    // fetching current inode state
     if(!(inode = zdbfs_fetch_inode(req, ino))) {
         fuse_reply_err(req, ENOENT);
-        return; // FIXME free
+        return;
     }
 
+    memset(&stbuf, 0, sizeof(stbuf));
+
+    // update inode based on request
     if(to_set & FUSE_SET_ATTR_MODE)
         inode->mode = attr->st_mode;
 
@@ -125,17 +125,23 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
     if(to_set & FUSE_SET_ATTR_CTIME)
         inode->ctime = attr->st_ctim.tv_sec;
 
-    buffer_t save = zdbfs_inode_serialize(inode);
-    if(zdb_set(fs->mdctx, ino, save.buffer, save.length) != ino)
-        dies("setattr", "could not update backend inode");
+    // save updated inode to backend
+    if(zdbfs_inode_store(fs->mdctx, inode, ino) != ino) {
+        fuse_reply_err(req, EIO);
+        goto cleanup;
+    }
 
+    // send updated information back to caller
     zdbfs_inode_to_stat(&stbuf, inode);
-
     fuse_reply_attr(req, &stbuf, 1.0);
+
+cleanup:
+    zdbfs_inode_free(inode);
 }
 
 static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
-	struct fuse_entry_param e;
+    struct fuse_entry_param e;
+    int found = 0;
 
     zdbfs_debug("[+] lookup: parent: %ld, name: %s\n", parent, name);
 
@@ -163,16 +169,19 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
 
             fuse_reply_entry(req, &e);
 
-            // FIXME
-            return;
+            found = 1;
+            break;
         }
     }
 
-    fuse_reply_err(req, ENOENT);
+    if(!found)
+        fuse_reply_err(req, ENOENT);
+
+    zdbfs_inode_free(inode);
 }
 
 static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode, struct fuse_file_info *fi) {
-	struct fuse_entry_param e;
+    struct fuse_entry_param e;
     zdbfs_t *fs = fuse_req_userdata(req);
     uint32_t ino;
 
@@ -212,22 +221,22 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
 }
 
 struct dirbuf {
-	char *p;
-	size_t size;
+    char *p;
+    size_t size;
 };
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
 static int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize, off_t off, size_t maxsize)
 {
-	if (off < bufsize)
-		return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
-	else
-		return fuse_reply_buf(req, NULL, 0);
+    if (off < bufsize)
+        return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
+    else
+        return fuse_reply_buf(req, NULL, 0);
 }
 
 static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
-	struct fuse_entry_param e;
+    struct fuse_entry_param e;
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     zdbfs_t *fs = fuse_req_userdata(req);
 
@@ -266,7 +275,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 }
 
 static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
-	(void) fi;
+    (void) fi;
 
     zdbfs_debug("[+] readdir: %lu: request\n", ino);
 
@@ -280,7 +289,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 
     struct dirbuf bb, *b;
     b = &bb;
-	memset(b, 0, sizeof(bb));
+    memset(b, 0, sizeof(bb));
 
     for(size_t i = 0; i < dir->length; i++) {
         zdb_direntry_t *entry = dir->entries[i];
@@ -295,8 +304,8 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
         fuse_add_direntry(req, b->p + oldsize, b->size - oldsize, entry->name, &stbuf, b->size);
     }
 
-	reply_buf_limited(req, bb.p, bb.size, off, size);
-	free(bb.p);
+    reply_buf_limited(req, bb.p, bb.size, off, size);
+    free(bb.p);
 }
 
 
@@ -310,13 +319,13 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
         return;
 
     if(S_ISDIR(inode->mode)) {
-		fuse_reply_err(req, EISDIR);
+        fuse_reply_err(req, EISDIR);
         return;
     }
 
     /*
-	if((fi->flags & O_ACCMODE) != O_RDONLY) {
-		fuse_reply_err(req, EACCES);
+    if((fi->flags & O_ACCMODE) != O_RDONLY) {
+        fuse_reply_err(req, EACCES);
         return;
     }
     */
@@ -325,7 +334,7 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
 }
 
 static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
-	(void) fi;
+    (void) fi;
     zdbfs_t *fs = fuse_req_userdata(req);
     zdbfs_debug("[+] read: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
@@ -361,7 +370,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         return;
     }
 
-	reply_buf_limited(req, (const char *) reply->value, reply->length, off, size);
+    reply_buf_limited(req, (const char *) reply->value, reply->length, off, size);
 }
 static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
@@ -409,7 +418,7 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 
 static const struct fuse_lowlevel_ops hello_ll_oper = {
     .lookup     = zdbfs_fuse_lookup,
-    .getattr    = hello_ll_getattr,
+    .getattr    = zdbfs_fuse_getattr,
     .setattr    = zdbfs_fuse_setattr,
     .readdir    = zdbfs_fuse_readdir,
     .open       = zdbfs_fuse_open,
@@ -420,10 +429,10 @@ static const struct fuse_lowlevel_ops hello_ll_oper = {
 };
 
 int main(int argc, char *argv[]) {
-	struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-	struct fuse_session *se;
-	struct fuse_cmdline_opts opts;
-	struct fuse_loop_config config;
+    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    struct fuse_session *se;
+    struct fuse_cmdline_opts opts;
+    struct fuse_loop_config config;
     zdbfs_t zdbfs = {
         .mdctx = NULL,
         .datactx = NULL,
@@ -433,64 +442,68 @@ int main(int argc, char *argv[]) {
 
     printf("[+] initializing zdb filesystem\n");
     zdbfs_zdb_connect(&zdbfs);
-    zdbfs_create(&zdbfs);
+    zdbfs_initialize_filesystem(&zdbfs);
 
 
-	if(fuse_parse_cmdline(&args, &opts) != 0)
-		return 1;
+    if(fuse_parse_cmdline(&args, &opts) != 0)
+        return 1;
 
-	if(opts.show_help) {
-		printf("usage: %s [options] <mountpoint>\n\n", argv[0]);
-		fuse_cmdline_help();
-		fuse_lowlevel_help();
+    if(opts.show_help) {
+        printf("usage: %s [options] <mountpoint>\n\n", argv[0]);
+        fuse_cmdline_help();
+        fuse_lowlevel_help();
         return 0;
 
-	} else if(opts.show_version) {
-		printf("FUSE library version %s\n", fuse_pkgversion());
-		fuse_lowlevel_version();
+    } else if(opts.show_version) {
+        printf("FUSE library version %s\n", fuse_pkgversion());
+        fuse_lowlevel_version();
         return 0;
-	}
+    }
 
-	if(opts.mountpoint == NULL) {
-		printf("usage: %s [options] <mountpoint>\n", argv[0]);
-		printf("       %s --help\n", argv[0]);
+    if(opts.mountpoint == NULL) {
+        printf("usage: %s [options] <mountpoint>\n", argv[0]);
+        printf("       %s --help\n", argv[0]);
         return 1;
-	}
+    }
 
-    printf("[+] initializing fuse session\n");
-	if(!(se = fuse_session_new(&args, &hello_ll_oper, sizeof(hello_ll_oper), &zdbfs)))
-        return 1;
-
-    printf("[+] initializing signals\n");
-	if(fuse_set_signal_handlers(se) != 0)
+    zdbfs_debug("[+] fuse: initializing session\n");
+    if(!(se = fuse_session_new(&args, &hello_ll_oper, sizeof(hello_ll_oper), &zdbfs)))
         return 1;
 
-    printf("[+] mounting session\n");
-	if(fuse_session_mount(se, opts.mountpoint) != 0)
+    zdbfs_debug("[+] fuse: initializing signals\n");
+    if(fuse_set_signal_handlers(se) != 0)
         return 1;
 
-	// fuse_daemonize(opts.foreground);
-	// fuse_daemonize(0);
+    zdbfs_debug("[+] fuse: mounting session\n");
+    if(fuse_session_mount(se, opts.mountpoint) != 0)
+        return 1;
 
-	// if(opts.singlethread)
-    printf("[+] processing events\n");
-	int ret = fuse_session_loop(se);
+    // fuse_daemonize(opts.foreground);
+    // fuse_daemonize(0);
+
+    // if(opts.singlethread)
+    zdbfs_debug("[+] fuse: ready, waiting events\n");
+    int ret = fuse_session_loop(se);
 
     /*
-	else {
-		config.clone_fd = opts.clone_fd;
-		config.max_idle_threads = opts.max_idle_threads;
-		ret = fuse_session_loop_mt(se, &config);
-	}
+    else {
+        config.clone_fd = opts.clone_fd;
+        config.max_idle_threads = opts.max_idle_threads;
+        ret = fuse_session_loop_mt(se, &config);
+    }
     */
 
-    printf("\n[+] cleaning environment\n");
-	fuse_session_unmount(se);
-	fuse_remove_signal_handlers(se);
-	fuse_session_destroy(se);
+    zdbfs_debug("\n[+] fuse: cleaning environment\n");
+    fuse_session_unmount(se);
+    fuse_remove_signal_handlers(se);
+    fuse_session_destroy(se);
 
-	free(opts.mountpoint);
-	fuse_opt_free_args(&args);
+    free(opts.mountpoint);
+    fuse_opt_free_args(&args);
 
-	return ret;
+    // disconnect redis
+    redisFree(zdbfs.mdctx);
+    redisFree(zdbfs.datactx);
+
+    return ret;
 }
