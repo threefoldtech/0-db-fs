@@ -15,6 +15,9 @@
 #include "zdb.h"
 #include "inode.h"
 
+//
+// debug purpose
+//
 void zdbd_fulldump(void *_data, size_t len) {
     uint8_t *data = _data;
     unsigned int i, j;
@@ -47,7 +50,9 @@ void zdbd_fulldump(void *_data, size_t len) {
     printf("\n");
 }
 
-
+//
+// general helpers
+//
 void dies(char *help, char *value) {
     fprintf(stderr, "[-] %s: %s\n", help, value);
     exit(EXIT_FAILURE);
@@ -58,18 +63,73 @@ void diep(char *str) {
     exit(EXIT_FAILURE);
 }
 
+//
+// fuse syscall implementation
+//
 static void hello_ll_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
-	struct stat stbuf;
-	(void) fi;
+    struct stat stbuf;
+    zdb_inode_t *inode;
+    (void) fi;
 
     zdbfs_debug("[+] getattr: ino: %ld\n", ino);
 
-	memset(&stbuf, 0, sizeof(stbuf));
+    memset(&stbuf, 0, sizeof(stbuf));
 
     if(zdbfs_inode_stat(req, ino, &stbuf)) {
         fuse_reply_err(req, ENOENT);
-        return; // FIXME
+        return; // FIXME free
     }
+
+    fuse_reply_attr(req, &stbuf, 1.0);
+}
+
+void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int to_set, struct fuse_file_info *fi) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    struct stat stbuf;
+    zdb_inode_t *inode;
+    (void) fi;
+
+    zdbfs_debug("[+] setattr: ino: %ld\n", ino);
+
+    memset(&stbuf, 0, sizeof(stbuf));
+
+    if(!(inode = zdbfs_fetch_inode(req, ino))) {
+        fuse_reply_err(req, ENOENT);
+        return; // FIXME free
+    }
+
+    if(to_set & FUSE_SET_ATTR_MODE)
+        inode->mode = attr->st_mode;
+
+    if(to_set & FUSE_SET_ATTR_UID)
+        inode->uid = attr->st_uid;
+
+    if(to_set & FUSE_SET_ATTR_GID)
+        inode->gid = attr->st_gid;
+
+    if(to_set & FUSE_SET_ATTR_SIZE)
+        inode->size = attr->st_size;
+
+    if(to_set & FUSE_SET_ATTR_ATIME)
+        inode->atime = attr->st_atim.tv_sec;
+
+    if(to_set & FUSE_SET_ATTR_MTIME)
+        inode->mtime = attr->st_mtim.tv_sec;
+
+    if(to_set & FUSE_SET_ATTR_ATIME_NOW)
+        inode->atime = time(NULL);
+
+    if(to_set & FUSE_SET_ATTR_MTIME_NOW)
+        inode->mtime = time(NULL);
+
+    if(to_set & FUSE_SET_ATTR_CTIME)
+        inode->ctime = attr->st_ctim.tv_sec;
+
+    buffer_t save = zdbfs_inode_serialize(inode);
+    if(zdb_set(fs->mdctx, ino, save.buffer, save.length) != ino)
+        dies("setattr", "could not update backend inode");
+
+    zdbfs_inode_to_stat(&stbuf, inode);
 
     fuse_reply_attr(req, &stbuf, 1.0);
 }
@@ -348,11 +408,12 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 }
 
 static const struct fuse_lowlevel_ops hello_ll_oper = {
-	.lookup		= zdbfs_fuse_lookup,
-	.getattr	= hello_ll_getattr,
-	.readdir	= zdbfs_fuse_readdir,
-	.open		= zdbfs_fuse_open,
-	.read		= zdbfs_fuse_read,
+    .lookup     = zdbfs_fuse_lookup,
+    .getattr    = hello_ll_getattr,
+    .setattr    = zdbfs_fuse_setattr,
+    .readdir    = zdbfs_fuse_readdir,
+    .open       = zdbfs_fuse_open,
+    .read       = zdbfs_fuse_read,
     .write      = zdbfs_fuse_write,
     .mkdir      = zdbfs_fuse_mkdir,
     .create     = zdbfs_fuse_create,
