@@ -65,8 +65,10 @@ void diep(char *str) {
 }
 
 // propagate an error to fuse with verbosity
-void zdbfs_fuse_error(fuse_req_t req, int err) {
-    zdbfs_debug("[-] request error: %s\n", strerror(err));
+#define zdbfs_fuse_error(req, err, ino) zdbfs_fuse_error_caller(req, err, ino, __func__)
+
+void zdbfs_fuse_error_caller(fuse_req_t req, int err, uint32_t ino, const char *caller) {
+    zdbfs_debug("[-] %s: ino %u: %s\n", caller, ino, strerror(err));
     fuse_reply_err(req, err);
 }
 
@@ -81,10 +83,8 @@ static void zdbfs_fuse_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_
 
     zdbfs_debug("[+] syscall: getattr: ino: %ld\n", ino);
 
-    if(zdbfs_inode_stat(req, ino, &stbuf)) {
-        fuse_reply_err(req, ENOENT);
-        return;
-    }
+    if(zdbfs_inode_stat(req, ino, &stbuf))
+        return zdbfs_fuse_error(req, ENOENT, ino);
 
     fuse_reply_attr(req, &stbuf, 1.0);
 }
@@ -98,10 +98,8 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
     zdbfs_debug("[+] syscall: setattr: ino: %ld\n", ino);
 
     // fetching current inode state
-    if(!(inode = zdbfs_fetch_inode(req, ino))) {
-        fuse_reply_err(req, ENOENT);
-        return;
-    }
+    if(!(inode = zdbfs_fetch_inode(req, ino)))
+        zdbfs_fuse_error(req, ENOENT, ino);
 
     memset(&stbuf, 0, sizeof(stbuf));
 
@@ -135,7 +133,7 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
 
     // save updated inode to backend
     if(zdbfs_inode_store(fs->mdctx, inode, ino) != ino) {
-        fuse_reply_err(req, EIO);
+        zdbfs_fuse_error(req, EIO, ino);
         goto cleanup;
     }
 
@@ -181,7 +179,7 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
     }
 
     if(!found)
-        fuse_reply_err(req, ENOENT);
+        zdbfs_fuse_error(req, ENOENT, parent);
 
     zdbfs_inode_free(inode);
 }
@@ -249,7 +247,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 
     uint32_t ino;
     if((ino = zdbfs_inode_store(fs->mdctx, newdir, 0)) == 0) {
-        fuse_reply_err(req, EIO);
+        zdbfs_fuse_error(req, EIO, 0);
         // FREE
         return;
     }
@@ -267,7 +265,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 
     if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent) {
         printf("could not update parent\n");
-        fuse_reply_err(req, EIO);
+        zdbfs_fuse_error(req, EIO, parent);
         // FREE
         return;
     }
@@ -343,7 +341,7 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
         return;
 
     if(S_ISDIR(inode->mode)) {
-        fuse_reply_err(req, EISDIR);
+        zdbfs_fuse_error(req, EISDIR, ino);
         ok = 0;
     }
 
@@ -369,11 +367,8 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
     zdbfs_debug("[+] syscall: read: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
     zdb_inode_t *inode;
-    if(!(inode = zdbfs_fetch_inode(req, ino))) {
-        printf("cannot fetch inode\n");
-        fuse_reply_err(req, EIO);
-        return;
-    }
+    if(!(inode = zdbfs_fetch_inode(req, ino)))
+        zdbfs_fuse_error(req, EIO, ino);
 
     // zdbfs_inode_dump(inode);
 
@@ -398,7 +393,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         zdb_reply_t *reply;
         if(!(reply = zdb_get(fs->datactx, blockid))) {
             printf("could not find block\n");
-            fuse_reply_err(req, EIO);
+            zdbfs_fuse_error(req, EIO, ino);
             free(buffer);
             return;
         }
@@ -440,11 +435,8 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
     size_t sent = 0;
 
     zdb_inode_t *inode;
-    if(!(inode = zdbfs_fetch_inode(req, ino))) {
-        printf("could not fetch inode\n");
-        fuse_reply_write(req, 0);
-        return;
-    }
+    if(!(inode = zdbfs_fetch_inode(req, ino)))
+        return zdbfs_fuse_error(req, ENOENT, ino);
 
     // zdb_blocks_t *blocks = inode->extend[0];
 
