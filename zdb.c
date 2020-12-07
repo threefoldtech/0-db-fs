@@ -15,7 +15,8 @@
 #include "zdb.h"
 #include "inode.h"
 
-static char *host = "10.241.0.232";
+// static char *host = "10.241.0.232";
+static char *host = "127.0.0.1";
 
 int zdbfs_zdb_connect(zdbfs_t *fs) {
     zdbfs_debug("[+] backend: connecting metadata zdb\n");
