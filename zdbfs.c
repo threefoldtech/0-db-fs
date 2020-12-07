@@ -81,7 +81,7 @@ static void zdbfs_fuse_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_
     struct stat stbuf;
     (void) fi;
 
-    zdbfs_debug("[+] syscall: getattr: ino: %ld\n", ino);
+    zdbfs_verbose("[+] syscall: getattr: ino: %ld\n", ino);
 
     if(zdbfs_inode_stat(req, ino, &stbuf))
         return zdbfs_fuse_error(req, ENOENT, ino);
@@ -95,7 +95,7 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
     zdb_inode_t *inode;
     (void) fi;
 
-    zdbfs_debug("[+] syscall: setattr: ino: %ld\n", ino);
+    zdbfs_verbose("[+] syscall: setattr: ino: %ld\n", ino);
 
     // fetching current inode state
     if(!(inode = zdbfs_fetch_inode(req, ino)))
@@ -149,7 +149,7 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
     struct fuse_entry_param e;
     int found = 0;
 
-    zdbfs_debug("[+] syscall: lookup: parent: %ld, name: %s\n", parent, name);
+    zdbfs_verbose("[+] syscall: lookup: parent: %ld, name: %s\n", parent, name);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, parent)))
@@ -188,6 +188,8 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
     struct fuse_entry_param e;
     zdbfs_t *fs = fuse_req_userdata(req);
     uint32_t ino;
+
+    zdbfs_verbose("[+] syscall: create: parent: %ld, name: %s\n", parent, name);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, parent)))
@@ -234,7 +236,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     zdbfs_t *fs = fuse_req_userdata(req);
 
-    zdbfs_debug("[+] syscall: mkdir: parent: %ld, name: %s\n", parent, name);
+    zdbfs_verbose("[+] syscall: mkdir: parent: %ld, name: %s\n", parent, name);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, parent)))
@@ -286,7 +288,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
 
-    zdbfs_debug("[+] syscall: readdir: %lu: request\n", ino);
+    zdbfs_verbose("[+] syscall: readdir: %lu: request\n", ino);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_directory(req, ino)))
@@ -336,7 +338,7 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     zdb_inode_t *inode;
     int ok = 1;
 
-    zdbfs_debug("[+] syscall: open: ino %lu: request\n", ino);
+    zdbfs_verbose("[+] syscall: open: ino %lu: request\n", ino);
 
     if(!(inode = zdbfs_fetch_inode(req, ino)))
         return;
@@ -365,7 +367,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
     size_t fetched = 0;
     char *buffer;
 
-    zdbfs_debug("[+] syscall: read: ino %lu: size %lu, off: %lu\n", ino, size, off);
+    zdbfs_verbose("[+] syscall: read: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_inode(req, ino)))
@@ -431,9 +433,10 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
 static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
-    zdbfs_debug("[+] syscall: write: ino %lu: size %lu, off: %lu\n", ino, size, off);
     zdbfs_t *fs = fuse_req_userdata(req);
     size_t sent = 0;
+
+    zdbfs_verbose("[+] syscall: write: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
     zdb_inode_t *inode;
     if(!(inode = zdbfs_fetch_inode(req, ino)))
