@@ -593,11 +593,15 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
         return;
     }
 
-    // copy direntry and copy it to new parent
-    zdbfs_inode_dir_append(new, entry->ino, newname);
-
     // remove original
     zdbfs_inode_remove_entry(old, name);
+
+    // remove new name (if exists)
+    // FIXME: should unlink it !
+    zdbfs_inode_remove_entry(new, newname);
+
+    // copy direntry and copy it to new parent
+    zdbfs_inode_dir_append(new, entry->ino, newname);
 
     // save updated parents
     if(zdbfs_inode_store(fs->mdctx, old, parent) != parent) {
@@ -608,17 +612,17 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
     }
 
     // saving new parent if it's not the same
-    if(parent != newparent) {
-        if(zdbfs_inode_store(fs->mdctx, new, newparent) != newparent) {
-            zdbfs_fuse_error(req, EIO, newparent);
-            zdbfs_inode_free(old);
-            zdbfs_inode_free(new);
-            return;
-        }
+    if(zdbfs_inode_store(fs->mdctx, new, newparent) != newparent) {
+        zdbfs_fuse_error(req, EIO, newparent);
+        zdbfs_inode_free(old);
+        zdbfs_inode_free(new);
+        return;
     }
 
     fuse_reply_err(req, 0);
     zdbfs_inode_free(new);
+    zdbfs_inode_free(old);
+}
 
     // avoid double free
     if(parent != newparent)

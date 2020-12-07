@@ -485,6 +485,9 @@ int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
 
     // flag size as zero, will be skipped serialized
     zdbfs_debug("[+] inode: remove entry: entry found, deleting\n");
+
+    // overwrite name (to avoid false match later)
+    memset(entry->name, 0, entry->size);
     entry->size = 0;
 
     return 0;
