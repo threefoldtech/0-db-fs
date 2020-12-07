@@ -15,10 +15,12 @@
 #include "zdb.h"
 #include "inode.h"
 
+static char *host = "10.241.0.232";
+
 int zdbfs_zdb_connect(zdbfs_t *fs) {
     zdbfs_debug("[+] backend: connecting metadata zdb\n");
 
-    if(!(fs->mdctx = redisConnect("127.0.0.1", 9900)))
+    if(!(fs->mdctx = redisConnect(host, 9900)))
         diep("redis init");
 
     if(fs->mdctx->err) {
@@ -27,7 +29,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     }
 
     zdbfs_debug("[+] backend: connecting data zdb\n");
-    if(!(fs->datactx = redisConnect("127.0.0.1", 9900)))
+    if(!(fs->datactx = redisConnect(host, 9900)))
         diep("redis init");
 
     if(fs->datactx->err) {
