@@ -560,6 +560,71 @@ void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     zdbfs_inode_free(inode);
 }
 
+void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse_ino_t newparent, const char *newname, unsigned int flags) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    zdb_inode_t *old, *new;
+
+    // FIXME: parse flags
+
+    zdbfs_verbose("[+] syscall: rename: %lu, name: %s -> %lu, name: %s\n", parent, name, newparent, newname);
+
+    // first checking old and new inodes
+    if(!(old = zdbfs_fetch_inode(req, parent)))
+        zdbfs_fuse_error(req, ENOENT, parent);
+
+    // only fetch new parent if it's another directory
+    if(newparent != parent) {
+        if(!(new = zdbfs_fetch_inode(req, newparent))) {
+            zdbfs_fuse_error(req, ENOENT, newparent);
+            zdbfs_inode_free(old);
+            return;
+        }
+
+    } else {
+        new = old;
+    }
+
+    // ensure source exists
+    zdb_direntry_t *entry;
+    if(!(entry = zdbfs_inode_lookup_direntry(old, name))) {
+        zdbfs_fuse_error(req, ENOENT, parent);
+        zdbfs_inode_free(old);
+        zdbfs_inode_free(new);
+        return;
+    }
+
+    // copy direntry and copy it to new parent
+    zdbfs_inode_dir_append(new, entry->ino, newname);
+
+    // remove original
+    zdbfs_inode_remove_entry(old, name);
+
+    // save updated parents
+    if(zdbfs_inode_store(fs->mdctx, old, parent) != parent) {
+        zdbfs_fuse_error(req, EIO, parent);
+        zdbfs_inode_free(old);
+        zdbfs_inode_free(new);
+        return;
+    }
+
+    // saving new parent if it's not the same
+    if(parent != newparent) {
+        if(zdbfs_inode_store(fs->mdctx, new, newparent) != newparent) {
+            zdbfs_fuse_error(req, EIO, newparent);
+            zdbfs_inode_free(old);
+            zdbfs_inode_free(new);
+            return;
+        }
+    }
+
+    fuse_reply_err(req, 0);
+    zdbfs_inode_free(new);
+
+    // avoid double free
+    if(parent != newparent)
+        zdbfs_inode_free(old);
+}
+
 static const struct fuse_lowlevel_ops hello_ll_oper = {
     .lookup     = zdbfs_fuse_lookup,
     .getattr    = zdbfs_fuse_getattr,
@@ -571,13 +636,15 @@ static const struct fuse_lowlevel_ops hello_ll_oper = {
     .mkdir      = zdbfs_fuse_mkdir,
     .create     = zdbfs_fuse_create,
     .unlink     = zdbfs_fuse_unlink,
+    .rmdir      = zdbfs_fuse_rmdir,
+    .rename     = zdbfs_fuse_rename,
 };
 
 int main(int argc, char *argv[]) {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct fuse_session *se;
     struct fuse_cmdline_opts opts;
-    // struct fuse_loop_config config;
+    struct fuse_loop_config config;
 
     zdbfs_t zdbfs = {
         .mdctx = NULL,
@@ -630,14 +697,11 @@ int main(int argc, char *argv[]) {
     // if(opts.singlethread)
     zdbfs_debug("[+] fuse: ready, waiting events\n");
     int ret = fuse_session_loop(se);
+    (void) config;
 
-    /*
-    else {
-        config.clone_fd = opts.clone_fd;
-        config.max_idle_threads = opts.max_idle_threads;
-        ret = fuse_session_loop_mt(se, &config);
-    }
-    */
+    // config.clone_fd = opts.clone_fd;
+    // config.max_idle_threads = 10;
+    // int ret = fuse_session_loop_mt(se, &config);
 
     zdbfs_debug("\n[+] fuse: cleaning environment\n");
     fuse_session_unmount(se);
