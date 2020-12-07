@@ -29,6 +29,8 @@
 
     zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode);
     zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir);
-
     zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint32_t ino, const char *name);
+    int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name);
+
+    zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name);
 #endif

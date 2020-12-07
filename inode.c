@@ -460,6 +460,32 @@ uint32_t zdbfs_inode_store(redisContext *backend, zdb_inode_t *inode, uint32_t i
     return inoret;
 }
 
+zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name) {
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+
+    for(size_t i = 0; i < dir->length; i++) {
+        // lookup for each entry for the right one
+        zdb_direntry_t *entry = dir->entries[i];
+        if(strcmp(entry->name, name) == 0)
+            return entry;
+    }
+
+    return NULL;
+}
+
+int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
+    zdb_direntry_t *entry;
+
+    if(!(entry = zdbfs_inode_lookup_direntry(inode, name)))
+        return 1;
+
+    // flag size as zero, will be skipped serialized
+    zdbfs_debug("[+] inode: remove entry: entry found, deleting\n");
+    entry->size = 0;
+
+    return 0;
+}
+
 zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     zdb_inode_t *create;

@@ -469,27 +469,81 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     zdbfs_t *fs = fuse_req_userdata(req);
     zdb_inode_t *inode;
-    int found = 0;
 
-    zdbfs_debug("[+] syscall: unlink: parent %lu, name: %s\n", parent, name);
+    //
+    // FIXME: no forget support
+    //
+    zdbfs_verbose("[+] syscall: unlink: parent %lu, name: %s\n", parent, name);
 
     if(!(inode = zdbfs_fetch_inode(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    if(zdbfs_inode_remove_entry(inode, name) != 0) {
+        // no entry found
+        zdbfs_fuse_error(req, ENOENT, parent);
+        zdbfs_inode_free(inode);
+        return;
+    }
 
-    for(size_t i = 0; i < dir->length; i++) {
-        // lookup for entry to delete
-        zdb_direntry_t *entry = dir->entries[i];
+    if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent) {
+        zdbfs_fuse_error(req, EIO, parent);
+        zdbfs_inode_free(inode);
+        return;
+    }
 
-        if(strcmp(entry->name, name) == 0) {
-            zdbfs_debug("[+] unlink: found entry, deleting\n");
+    // FIXME: clean blocks
 
-            // flag size as zero, will be skipped serialized
-            entry->size = 0;
-            found = 1;
-            break;
-        }
+    // success
+    fuse_reply_err(req, 0);
+    zdbfs_inode_free(inode);
+}
+
+void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    zdb_inode_t *inode;
+
+    //
+    // FIXME: no forget support
+    //
+    zdbfs_verbose("[+] syscall: rmdir: parent %lu, name: %s\n", parent, name);
+
+    if(!(inode = zdbfs_fetch_inode(req, parent)))
+        return zdbfs_fuse_error(req, ENOENT, parent);
+
+    zdb_direntry_t *expected;
+    if(!(expected = zdbfs_inode_lookup_direntry(inode, name))) {
+        zdbfs_debug("[+] rmdir: child not found (%s) on parent: %lu\n", name, parent);
+        zdbfs_fuse_error(req, ENOENT, parent);
+        zdbfs_inode_free(inode);
+        return;
+    }
+
+    zdbfs_debug("[+] rmdir: entry found, inspecting ino: %u\n", expected->ino);
+
+    zdb_inode_t *target;
+    if(!(target = zdbfs_fetch_inode(req, expected->ino))) {
+        zdbfs_fuse_error(req, ENOENT, expected->ino);
+        zdbfs_inode_free(inode);
+        return;
+    }
+
+    zdb_dir_t *targetdir = zdbfs_inode_dir_get(target);
+    if(targetdir->length > 2) {
+        zdbfs_debug("[+] rmdir: target directory not empty (length: %u)\n", targetdir->length);
+        zdbfs_fuse_error(req, ENOTEMPTY, expected->ino);
+        zdbfs_inode_free(inode);
+        zdbfs_inode_free(target);
+        return;
+    }
+
+    // no need of target inode anymore
+    zdbfs_inode_free(target);
+
+    // this should never fails since it matched just before
+    if(zdbfs_inode_remove_entry(inode, name) != 0) {
+        zdbfs_fuse_error(req, ENOENT, parent);
+        zdbfs_inode_free(inode);
+        return;
     }
 
     if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent) {
