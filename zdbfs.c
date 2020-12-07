@@ -314,10 +314,6 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
         ptr += cursize;
     }
 
-    printf("replying with: %lu bytes\n", buffer.length);
-
-    // FIXME
-    // reply_buf_limited(req, buffer.buffer, buffer.length, off, size);
     fuse_reply_buf(req, buffer.buffer, buffer.length);
 
     free(buffer.buffer);
