@@ -86,6 +86,10 @@ void diep(char *str) {
 #define zdbfs_fuse_error(req, err, ino) zdbfs_fuse_error_caller(req, err, ino, __func__)
 
 void zdbfs_fuse_error_caller(fuse_req_t req, int err, uint32_t ino, const char *caller) {
+    #ifdef RELEASE
+    (void) ino;
+    (void) caller;
+    #endif
     zdbfs_debug("[-] %s: ino %u: %s\n", caller, ino, strerror(err));
     fuse_reply_err(req, err);
 }
@@ -218,17 +222,6 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
     fuse_reply_create(req, &e, fi);
 }
 
-#define min(x, y) ((x) < (y) ? (x) : (y))
-
-static int reply_buf_limited(fuse_req_t req, const char *buf, size_t bufsize, off_t off, size_t maxsize)
-{
-    // FIXME
-    if (off < bufsize)
-        return fuse_reply_buf(req, buf + off, min(bufsize - off, maxsize));
-    else
-        return fuse_reply_buf(req, NULL, 0);
-}
-
 static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode) {
     struct fuse_entry_param e;
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
@@ -267,7 +260,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
     volino zdb_inode_t *inode = NULL;
-    size_t limit = 0;
+    off_t limit = 0;
 
     zdbfs_verbose("[+] syscall: readdir: %lu: size: %lu, offset: %ld\n", ino, size, off);
 
@@ -294,7 +287,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
         // if expected buffer length is too large
         // we won't fill it more
         if(buffer.length + entlen > size) {
-            printf("too large for this time\n");
+            zdbfs_debug("[+] readdir: entry %ld will be too large, chunking\n");
             break;
         }
 
@@ -314,7 +307,6 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     for(off_t i = off; i < off + limit; i++) {
         zdb_direntry_t *entry = dir->entries[i];
         size_t cursize = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
-        off_t eoff = (off_t) ptr + cursize;
 
         stbuf.st_ino = entry->ino;
         fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, i);
@@ -687,6 +679,9 @@ int main(int argc, char *argv[]) {
 
     // fuse_daemonize(opts.foreground);
     // fuse_daemonize(0);
+
+    // FIXME: cache handling
+    // zdbfs.icache = (zdb_inode_t **) calloc(sizeof(zdb_inode_t *), 1024);
 
     // if(opts.singlethread)
     zdbfs_debug("[+] fuse: ready, waiting events\n");
