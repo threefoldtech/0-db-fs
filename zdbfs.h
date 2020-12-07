@@ -43,6 +43,7 @@
         uint16_t uid;
         uint16_t gid;
         uint64_t size;
+        uint32_t links;
         uint32_t atime;
         uint32_t mtime;
         uint32_t ctime;

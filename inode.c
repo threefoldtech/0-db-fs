@@ -351,9 +351,9 @@ void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode) {
     st->st_mtim = zdbfs_time_sys(inode->mtime);
     st->st_atim = zdbfs_time_sys(inode->atime);
     st->st_size = inode->size;
+    st->st_nlink = inode->links;
 
     // FIXME
-    st->st_nlink = 2;
     st->st_rdev = 0;
     st->st_dev = 0;
     st->st_blocks = 0;
@@ -367,6 +367,10 @@ void zdbfs_dir_free(zdb_dir_t *dir) {
 }
 
 void zdbfs_inode_free(zdb_inode_t *inode) {
+    // do nothing on null inode
+    if(!inode)
+        return;
+
     if(S_ISDIR(inode->mode)) {
         // free directory entries
         zdbfs_dir_free(inode->extend[0]);
@@ -500,6 +504,7 @@ zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
     create->uid = ctx->uid;
     create->gid = ctx->gid;
     create->size = 0;
+    create->links = 1;
 
     if(!(create->extend[0] = calloc(sizeof(zdb_blocks_t), 1)))
         diep("inode: new file: calloc");
