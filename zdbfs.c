@@ -193,9 +193,9 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
 static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode, struct fuse_file_info *fi) {
     struct fuse_entry_param e;
     zdbfs_t *fs = fuse_req_userdata(req);
-    uint32_t ino;
     volino zdb_inode_t *inode = NULL;
     volino zdb_inode_t *create = NULL;
+    uint32_t ino;
 
     zdbfs_verbose("[+] syscall: create: parent: %ld, name: %s\n", parent, name);
 
@@ -208,9 +208,7 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
         dies("create", "could not create inode");
 
     // update directory with new entry
-    zdb_dir_t *dir = inode->extend[0];
-    dir = zdbfs_dir_append(dir, zdbfs_direntry_new(ino, name));
-    inode->extend[0] = dir;
+    zdbfs_inode_dir_append(inode, ino, name);
 
     if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent)
         dies("create", "could not update parent directory");
@@ -341,9 +339,9 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
 static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
     zdbfs_t *fs = fuse_req_userdata(req);
+    volino zdb_inode_t *inode = NULL;
     size_t fetched = 0;
     char *buffer;
-    volino zdb_inode_t *inode = NULL;
 
     zdbfs_verbose("[+] syscall: read: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
@@ -357,18 +355,17 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
     if(!(buffer = malloc(size)))
         diep("read: malloc buffer");
 
-    // for each block to send
+    // for each block to read
     while(fetched < size) {
         uint32_t block = zdbfs_offset_to_block(off);
 
         if(block >= blocks->length) {
             zdbfs_debug("[+] read: block ouf of bounds, eof reached\n");
-            fetched = 0;
             break;
         }
 
         uint32_t blockid = blocks->blocks[block];
-        zdbfs_debug("[+] read: fetching block: %u [%u]\n", block, blockid);
+        zdbfs_debug("[+] read: fetching block: %u [%u], fetched: %lu\n", block, blockid, fetched);
 
         zdb_reply_t *reply;
         if(!(reply = zdb_get(fs->datactx, blockid))) {
@@ -397,6 +394,11 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
         // cleaning block read
         zdb_free(reply);
+
+        if(chunk == 0) {
+            zdbfs_debug("[+] read: nothing more to read\n");
+            break;
+        }
 
         fetched += chunk;
         off += chunk;
@@ -428,12 +430,14 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
         if((blockid = zdb_set(fs->datactx, 0, buf + sent, towrite)) == 0) {
             dies("write", "cannot write block to backend");
         }
+
         zdbfs_inode_set_block(inode, block, blockid);
 
         sent += towrite;
         inode->size += towrite; // FIXME: does not support overwrite
     }
 
+    zdbfs_debug("[+] write: all blocks written (%lu bytes)\n", sent);
     if(zdbfs_inode_store(fs->mdctx, inode, ino) == 0) {
         dies("write", "could not update inode blocks");
     }
