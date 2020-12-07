@@ -161,6 +161,7 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
 static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fuse_entry_param e;
     volino zdb_inode_t *inode = NULL;
+    zdb_direntry_t *entry;
 
     zdbfs_verbose("[+] syscall: lookup: parent: %ld, name: %s\n", parent, name);
 
@@ -169,25 +170,20 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     // fillin direntry with inode contents
     zdbfs_debug("[+] lookup: %lu: okay, looking for entry: %s\n", parent, name);
-    zdb_dir_t *dir = inode->extend[0];
+
+    // checking for entry in that directory
+    if(!(entry = zdbfs_inode_lookup_direntry(inode, name)))
+        return zdbfs_fuse_error(req, ENOENT, parent);
+
     memset(&e, 0, sizeof(e));
+    if(zdbfs_inode_stat(req, entry->ino, &e.attr))
+        return;
 
-    for(size_t i = 0; i < dir->length; i++) {
-        zdb_direntry_t *entry = dir->entries[i];
-        if(strcmp(entry->name, name) == 0) {
-            if(zdbfs_inode_stat(req, entry->ino, &e.attr))
-                return;
+    e.ino = entry->ino;
+    e.attr_timeout = 10.0;
+    e.entry_timeout = 10.0;
 
-            e.ino = entry->ino;
-            e.attr_timeout = 10.0;
-            e.entry_timeout = 10.0;
-
-            fuse_reply_entry(req, &e);
-            return;
-        }
-    }
-
-    zdbfs_fuse_error(req, ENOENT, parent);
+    fuse_reply_entry(req, &e);
 }
 
 static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode, struct fuse_file_info *fi) {
