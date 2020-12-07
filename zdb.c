@@ -96,7 +96,15 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         rid = NULL;
     }
 
+    /*
     if(!(reply = redisCommand(remote, "SET %b %b", rid, rsize, buffer, length)))
+        diep("redis: set");
+    */
+
+    const char *argv[] = {"SET", rid, buffer};
+    size_t argvl[] = {3, rsize, length};
+
+    if(!(reply = redisCommandArgv(remote, 3, argv, argvl)))
         diep("redis: set");
 
     if(reply->type == REDIS_REPLY_ERROR) {
