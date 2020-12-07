@@ -353,10 +353,14 @@ void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode) {
     st->st_size = inode->size;
     st->st_nlink = inode->links;
 
-    // FIXME
+    // FIXME: does not reflect reality
+    //        this try to match to nearest 512 bytes aligned
+    //        value, but physical blocks are not rounded in reality
+    st->st_blocks = (inode->size + (512 - (inode->size % 512))) / 512;
+
+    // FIXME: not implemented
     st->st_rdev = 0;
     st->st_dev = 0;
-    st->st_blocks = 0;
 }
 
 void zdbfs_dir_free(zdb_dir_t *dir) {
