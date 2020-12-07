@@ -318,9 +318,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 }
 
 static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
-    zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
-    int ok = 1;
 
     zdbfs_verbose("[+] syscall: open: ino %lu: request\n", ino);
 
@@ -471,6 +469,7 @@ void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
 void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
+    volino zdb_inode_t *target = NULL;
 
     //
     // FIXME: no forget support
@@ -488,18 +487,14 @@ void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     zdbfs_debug("[+] rmdir: entry found, inspecting ino: %u\n", expected->ino);
 
-    zdb_inode_t *target;
     if(!(target = zdbfs_fetch_inode(req, expected->ino)))
-        return zdbfs_fuse_error(req, ENOENT, expected->ino);}
+        return zdbfs_fuse_error(req, ENOENT, expected->ino);
 
     zdb_dir_t *targetdir = zdbfs_inode_dir_get(target);
     if(targetdir->length > 2) {
         zdbfs_debug("[+] rmdir: target directory not empty (length: %u)\n", targetdir->length);
         return zdbfs_fuse_error(req, ENOTEMPTY, expected->ino);
     }
-
-    // no need of target inode anymore
-    zdbfs_inode_free(target);
 
     // this should never fails since it matched just before
     if(zdbfs_inode_remove_entry(inode, name) != 0)
@@ -514,6 +509,7 @@ void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
 // special handler for rename on the same directory
 void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char *name, const char *newname, unsigned int flags) {
+    (void) flags;
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *directory = NULL;
 
@@ -591,7 +587,8 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
 }
 
 void zdbfs_fuse_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
-    zdbfs_t *fs = fuse_req_userdata(req);
+    (void) fi;
+    // zdbfs_t *fs = fuse_req_userdata(req);
 
     zdbfs_verbose("[+] syscall: flush: %lu\n", ino);
 

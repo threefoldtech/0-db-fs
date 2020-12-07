@@ -11,12 +11,6 @@
 
     #define BLOCK_SIZE  (128 * 1024)
 
-    typedef struct zdbfs_t {
-        redisContext *mdctx;
-        redisContext *datactx;
-
-    } zdbfs_t;
-
     typedef struct zdb_blocks_t {
         uint64_t length;
         uint32_t blocks[];
@@ -51,7 +45,12 @@
 
     } __attribute__((packed)) zdb_inode_t;
 
+    typedef struct zdbfs_t {
+        redisContext *mdctx;
+        redisContext *datactx;
+        // zdb_inode_t **icache;
 
+    } zdbfs_t;
 
     typedef struct buffer_t {
         void *buffer;
