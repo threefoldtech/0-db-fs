@@ -624,9 +624,15 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
     zdbfs_inode_free(old);
 }
 
-    // avoid double free
-    if(parent != newparent)
-        zdbfs_inode_free(old);
+void zdbfs_fuse_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    zdbfs_verbose("[+] syscall: flush: %lu\n", ino);
+
+    // zdb_inode_t *inode = fs->icache[fi->fh];
+    // zdbfs_inode_free(inode);
+
+    fuse_reply_err(req, ENOSYS);
 }
 
 static const struct fuse_lowlevel_ops hello_ll_oper = {
@@ -642,6 +648,7 @@ static const struct fuse_lowlevel_ops hello_ll_oper = {
     .unlink     = zdbfs_fuse_unlink,
     .rmdir      = zdbfs_fuse_rmdir,
     .rename     = zdbfs_fuse_rename,
+    .flush      = zdbfs_fuse_flush,
 };
 
 int main(int argc, char *argv[]) {
