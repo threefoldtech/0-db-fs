@@ -234,6 +234,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
+    volino zdb_inode_t *newdir = NULL;
 
     zdbfs_verbose("[+] syscall: mkdir: parent: %ld, name: %s\n", parent, name);
 
@@ -241,7 +242,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
         return;
 
     // create new empty dir, sending it to the backend
-    zdb_inode_t *newdir = zdbfs_mkdir_empty(parent, mode);
+    zdbfs_mkdir_empty(parent, mode);
     newdir->uid = ctx->uid;
     newdir->gid = ctx->gid;
 
