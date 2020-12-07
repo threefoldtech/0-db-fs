@@ -159,7 +159,7 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
 
     // send updated information back to caller
     zdbfs_inode_to_stat(&stbuf, inode);
-    fuse_reply_attr(req, &stbuf, 1.0);
+    fuse_reply_attr(req, &stbuf, KERNEL_CACHE_TIME);
 }
 
 static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
@@ -184,8 +184,8 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
         return;
 
     e.ino = entry->ino;
-    e.attr_timeout = 10.0;
-    e.entry_timeout = 10.0;
+    e.attr_timeout = KERNEL_CACHE_TIME;
+    e.entry_timeout = KERNEL_CACHE_TIME;
 
     fuse_reply_entry(req, &e);
 }
@@ -215,8 +215,8 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     memset(&e, 0, sizeof(e));
     e.ino = ino;
-    e.attr_timeout = 1.0;
-    e.entry_timeout = 1.0;
+    e.attr_timeout = KERNEL_CACHE_TIME;
+    e.entry_timeout = KERNEL_CACHE_TIME;
 
     zdbfs_inode_to_stat(&e.attr, create);
     fuse_reply_create(req, &e, fi);
@@ -250,8 +250,8 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 
     memset(&e, 0, sizeof(e));
     e.ino = ino;
-    e.attr_timeout = 1.0;
-    e.entry_timeout = 1.0;
+    e.attr_timeout = KERNEL_CACHE_TIME;
+    e.entry_timeout = KERNEL_CACHE_TIME;
 
     zdbfs_inode_to_stat(&e.attr, newdir);
     fuse_reply_entry(req, &e);
