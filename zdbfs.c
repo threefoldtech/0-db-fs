@@ -267,8 +267,9 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
     volino zdb_inode_t *inode = NULL;
+    size_t limit = 0;
 
-    zdbfs_verbose("[+] syscall: readdir: %lu: request\n", ino);
+    zdbfs_verbose("[+] syscall: readdir: %lu: size: %lu, offset: %ld\n", ino, size, off);
 
     if(!(inode = zdbfs_fetch_directory(req, ino)))
         return;
@@ -280,10 +281,25 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     buffer_t buffer;
     buffer.length = 0;
 
+    if(off == dir->length - 1) {
+        fuse_reply_buf(req, NULL, 0);
+        return;
+    }
+
     // first pass: computing total size
-    for(size_t i = 0; i < dir->length; i++) {
+    for(off_t i = off; i < dir->length; i++) {
         zdb_direntry_t *entry = dir->entries[i];
-        buffer.length += fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+        size_t entlen = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+
+        // if expected buffer length is too large
+        // we won't fill it more
+        if(buffer.length + entlen > size) {
+            printf("too large for this time\n");
+            break;
+        }
+
+        buffer.length += entlen;
+        limit += 1;
     }
 
     // allocate buffer large enough
@@ -295,19 +311,22 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     memset(&stbuf, 0, sizeof(stbuf));
     uint8_t *ptr = buffer.buffer;
 
-    for(size_t i = 0; i < dir->length; i++) {
+    for(off_t i = off; i < off + limit; i++) {
         zdb_direntry_t *entry = dir->entries[i];
         size_t cursize = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
         off_t eoff = (off_t) ptr + cursize;
 
         stbuf.st_ino = entry->ino;
-        fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, eoff);
+        fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, i);
 
         ptr += cursize;
     }
 
+    printf("replying with: %lu bytes\n", buffer.length);
+
     // FIXME
-    reply_buf_limited(req, buffer.buffer, buffer.length, off, size);
+    // reply_buf_limited(req, buffer.buffer, buffer.length, off, size);
+    fuse_reply_buf(req, buffer.buffer, buffer.length);
 
     free(buffer.buffer);
 }
