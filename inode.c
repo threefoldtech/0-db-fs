@@ -117,7 +117,7 @@ zdb_dir_t *zdbfs_dir_new(uint32_t parent) {
     dir->length = 0;
     dir = zdbfs_dir_append(dir, zdbfs_direntry_new(parent, "."));
     dir = zdbfs_dir_append(dir, zdbfs_direntry_new(parent, ".."));
-    dir = zdbfs_dir_append(dir, zdbfs_direntry_new(42, "coucou"));
+    // dir = zdbfs_dir_append(dir, zdbfs_direntry_new(42, "coucou"));
 
     return dir;
 }
