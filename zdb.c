@@ -70,6 +70,13 @@ zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
     if(!(reply->rreply = redisCommand(remote, "GET %b", &id, sizeof(id))))
         diep("redis: get");
 
+    if(reply->rreply->type == REDIS_REPLY_ERROR) {
+        printf("[+] get: redis reply: error: %s\n", reply->rreply->str);
+        freeReplyObject(reply->rreply);
+        free(reply);
+        return NULL;
+    }
+
     if(reply->rreply->type == REDIS_REPLY_NIL) {
         printf("[+] get: redis reply: nil\n");
         freeReplyObject(reply->rreply);

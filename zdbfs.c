@@ -373,10 +373,8 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
         zdb_reply_t *reply;
         if(!(reply = zdb_get(fs->datactx, blockid))) {
-            printf("could not find block\n");
-            zdbfs_fuse_error(req, EIO, ino);
             free(buffer);
-            return;
+            return zdbfs_fuse_error(req, EIO, ino);
         }
 
         // fetched block contains something we need
