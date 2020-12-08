@@ -18,43 +18,47 @@
 // static char *host = "10.241.0.232";
 static char *host = "127.0.0.1";
 
-int zdbfs_zdb_connect(zdbfs_t *fs) {
-    zdbfs_debug("[+] backend: connecting metadata zdb\n");
-
-    if(!(fs->mdctx = redisConnect(host, 9900)))
-        diep("redis init");
-
-    if(fs->mdctx->err) {
-        fprintf(stderr, "[-] redis: %s\n", fs->mdctx->errstr);
-        return 1;
-    }
-
-    zdbfs_debug("[+] backend: connecting data zdb\n");
-    if(!(fs->datactx = redisConnect(host, 9900)))
-        diep("redis init");
-
-    if(fs->datactx->err) {
-        fprintf(stderr, "[-] redis: %s\n", fs->datactx->errstr);
-        return 1;
-    }
-
+int zdb_select(redisContext *remote, char *namespace) {
     redisReply *reply;
 
-    if(!(reply = redisCommand(fs->mdctx, "SELECT metadata")))
-        diep("redis select metadata");
+    zdbfs_debug("[+] zdb: select: request namespace: %s\n", namespace);
+
+    if(!(reply = redisCommand(remote, "SELECT %s", namespace)))
+        diep(namespace);
 
     if(strcmp(reply->str, "OK") != 0)
         dies("metadata namespacd", reply->str);
 
     freeReplyObject(reply);
 
-    if(!(reply = redisCommand(fs->datactx, "SELECT fsdata")))
-        diep("redis select data");
+    return 0;
+}
 
-    if(strcmp(reply->str, "OK") != 0)
-        dies("data namespacd", reply->str);
+int zdbfs_zdb_connect(zdbfs_t *fs) {
+    zdbfs_debug("[+] zdb: connecting metadata zdb\n");
 
-    freeReplyObject(reply);
+    if(!(fs->mdctx = redisConnect(host, 9900)))
+        diep("zdb: init");
+
+    if(fs->mdctx->err) {
+        fprintf(stderr, "[-] zdb: %s\n", fs->mdctx->errstr);
+        return 1;
+    }
+
+    zdbfs_debug("[+] zdb: connecting data zdb\n");
+    if(!(fs->datactx = redisConnect(host, 9900)))
+        diep("zdb: init");
+
+    if(fs->datactx->err) {
+        fprintf(stderr, "[-] zdb: %s\n", fs->datactx->errstr);
+        return 1;
+    }
+
+    if(zdb_select(fs->mdctx, "metadata"))
+        return 1;
+
+    if(zdb_select(fs->datactx, "fsdata"))
+        return 1;
 
     return 0;
 }
@@ -62,27 +66,29 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
 zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
     zdb_reply_t *reply;
 
-    zdbfs_debug("[+] get: zdb: request inode: %u\n", id);
+    zdbfs_debug("[+] zdb: get: request inode: %u\n", id);
 
     if(!(reply = calloc(sizeof(zdb_reply_t), 1)))
-        diep("reply: malloc");
+        diep("zdb: get: malloc");
 
     if(!(reply->rreply = redisCommand(remote, "GET %b", &id, sizeof(id))))
-        diep("redis: get");
+        diep("zdb: get");
 
     if(reply->rreply->type == REDIS_REPLY_ERROR) {
-        printf("[+] get: redis reply: error: %s\n", reply->rreply->str);
+        zdbfs_debug("[-] zdb: get: error: %s\n", reply->rreply->str);
         freeReplyObject(reply->rreply);
         free(reply);
         return NULL;
     }
 
     if(reply->rreply->type == REDIS_REPLY_NIL) {
-        printf("[+] get: redis reply: nil\n");
+        zdbfs_debug("[+] zdb: get: nil\n");
         freeReplyObject(reply->rreply);
         free(reply);
         return NULL;
     }
+
+    zdbfs_debug("[+] zdb: get: response length: %lu bytes\n", reply->rreply->len);
 
     reply->value = (uint8_t *) reply->rreply->str;
     reply->length = reply->rreply->len;
@@ -96,7 +102,7 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     uint32_t *rid = &id;
     size_t rsize = sizeof(id);
 
-    zdbfs_debug("[+] set: zdb: request inode: %u\n", id);
+    zdbfs_debug("[+] zdb: set: request inode: %u\n", id);
 
     // create new entry
     if(id == 0) {
@@ -104,19 +110,14 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         rid = NULL;
     }
 
-    /*
-    if(!(reply = redisCommand(remote, "SET %b %b", rid, rsize, buffer, length)))
-        diep("redis: set");
-    */
-
     const char *argv[] = {"SET", (char *) rid, buffer};
     size_t argvl[] = {3, rsize, length};
 
     if(!(reply = redisCommandArgv(remote, 3, argv, argvl)))
-        diep("redis: set");
+        diep("zdb: set");
 
     if(reply->type == REDIS_REPLY_ERROR) {
-        printf("<< %s\n", reply->str);
+        zdbfs_debug("[-] zdb: set: error: %s\n", reply->str);
         freeReplyObject(reply);
         return 0;
     }
@@ -125,7 +126,7 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         // if response is zero
         // this mean entry was not updated (no changes)
         // but it's a valid a reponse, not an error
-        printf("[+] set: zdb: key already up-to-date\n");
+        zdbfs_debug("[+] zdb: set: key already up-to-date\n");
         freeReplyObject(reply);
         return id;
     }
@@ -136,6 +137,23 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     freeReplyObject(reply);
 
     return response;
+}
+
+int zdb_del(redisContext *remote, uint32_t id) {
+    redisReply *reply;
+
+    if(!(reply = redisCommand(remote, "DEL %b", &id, sizeof(id))))
+        diep("zdb: del");
+
+    if(reply->type == REDIS_REPLY_ERROR) {
+        zdbfs_debug("[-] zdb: del: error: %s\n", reply->str);
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    freeReplyObject(reply);
+
+    return 0;
 }
 
 void zdb_free(zdb_reply_t *reply) {
