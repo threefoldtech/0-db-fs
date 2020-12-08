@@ -16,7 +16,6 @@
     zdb_direntry_t *zdbfs_direntry_new(uint32_t ino, const char *name);
     zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry);
     buffer_t zdbfs_inode_serialize(zdb_inode_t *inode);
-    void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode);
     int zdbfs_inode_stat(fuse_req_t req, fuse_ino_t ino, struct stat *stbuf);
     void zdbfs_inode_free(zdb_inode_t *inode);
 
@@ -30,6 +29,9 @@
     zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name);
 
     int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode);
+
+    void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode);
+    void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inode, uint32_t ino);
 
     zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode);
     zdb_inode_t *zdbfs_inode_new_symlink(fuse_req_t req, const char *link);

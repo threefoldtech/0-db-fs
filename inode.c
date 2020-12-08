@@ -389,6 +389,16 @@ zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir) {
     return dir;
 }
 
+void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inode, uint32_t ino) {
+    memset(param, 0, sizeof(struct fuse_entry_param));
+
+    param->ino = ino;
+    param->attr_timeout = KERNEL_CACHE_TIME;
+    param->entry_timeout = KERNEL_CACHE_TIME;
+
+    zdbfs_inode_to_stat(&param->attr, inode);
+}
+
 void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode) {
     st->st_mode = inode->mode;
     st->st_uid = inode->uid;

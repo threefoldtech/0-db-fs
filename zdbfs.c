@@ -213,12 +213,7 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
     if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent)
         dies("create", "could not update parent directory");
 
-    memset(&e, 0, sizeof(e));
-    e.ino = ino;
-    e.attr_timeout = KERNEL_CACHE_TIME;
-    e.entry_timeout = KERNEL_CACHE_TIME;
-
-    zdbfs_inode_to_stat(&e.attr, create);
+    zdbfs_inode_to_fuse_param(&e, create, ino);
     fuse_reply_create(req, &e, fi);
 }
 
@@ -248,12 +243,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     if(zdbfs_inode_store(fs->mdctx, inode, parent) != parent)
         return zdbfs_fuse_error(req, EIO, parent);
 
-    memset(&e, 0, sizeof(e));
-    e.ino = ino;
-    e.attr_timeout = KERNEL_CACHE_TIME;
-    e.entry_timeout = KERNEL_CACHE_TIME;
-
-    zdbfs_inode_to_stat(&e.attr, newdir);
+    zdbfs_inode_to_fuse_param(&e, newdir, ino);
     fuse_reply_entry(req, &e);
 }
 
@@ -478,12 +468,7 @@ void zdbfs_fuse_symlink(fuse_req_t req, const char *link, fuse_ino_t parent, con
     if(zdbfs_inode_store(fs->mdctx, directory, parent) != parent)
         return zdbfs_fuse_error(req, EIO, ino);
 
-    memset(&e, 0, sizeof(e));
-    e.ino = ino;
-    e.attr_timeout = KERNEL_CACHE_TIME;
-    e.entry_timeout = KERNEL_CACHE_TIME;
-
-    zdbfs_inode_to_stat(&e.attr, newlink);
+    zdbfs_inode_to_fuse_param(&e, newlink, ino);
     fuse_reply_entry(req, &e);
 }
 
@@ -531,12 +516,7 @@ void zdbfs_fuse_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const
     if(zdbfs_inode_store(fs->mdctx, newdir, newparent) != newparent)
         return zdbfs_fuse_error(req, EIO, newparent);
 
-    memset(&e, 0, sizeof(e));
-    e.ino = ino;
-    e.attr_timeout = KERNEL_CACHE_TIME;
-    e.entry_timeout = KERNEL_CACHE_TIME;
-
-    zdbfs_inode_to_stat(&e.attr, inode);
+    zdbfs_inode_to_fuse_param(&e, inode, ino);
     fuse_reply_entry(req, &e);
 }
 
