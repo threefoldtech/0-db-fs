@@ -33,4 +33,6 @@
     int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name);
 
     zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name);
+
+    int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode);
 #endif

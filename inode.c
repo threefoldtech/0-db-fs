@@ -519,6 +519,11 @@ zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
     return create;
 }
 
+int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
+    printf("DELETE BLOCKS\n");
+    return 0;
+}
+
 // first initialization of the fs
 //
 // entry 0 will be metadata about information regarding this
