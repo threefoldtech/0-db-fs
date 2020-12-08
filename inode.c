@@ -122,7 +122,7 @@ zdb_dir_t *zdbfs_dir_new(uint32_t parent) {
     return dir;
 }
 
-zdb_inode_t *zdbfs_mkdir_empty(uint32_t parent, uint32_t mode) {
+zdb_inode_t *zdbfs_inode_new_dir(uint32_t parent, uint32_t mode) {
     zdb_dir_t *dir;
     zdb_inode_t *inode;
 
@@ -496,7 +496,7 @@ zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     if(!S_ISDIR(inode->mode)) {
         zdbfs_debug("[+] directory: %lu: not a directory\n", ino);
         fuse_reply_err(req, ENOTDIR);
-        // FIXME: free
+        zdbfs_inode_free(inode);
         return NULL;
     }
 
@@ -658,7 +658,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
         return 0;
     }
 
-    zdb_inode_t *inode = zdbfs_mkdir_empty(1, 0755);
+    zdb_inode_t *inode = zdbfs_inode_new_dir(1, 0755);
     if(zdbfs_inode_store(fs->mdctx, inode, 0) != 1)
         dies("could not create root directory", zreply->str);
 

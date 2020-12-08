@@ -235,7 +235,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
         return;
 
     // create new empty dir, sending it to the backend
-    zdbfs_mkdir_empty(parent, mode);
+    zdbfs_inode_new_dir(parent, mode);
     newdir->uid = ctx->uid;
     newdir->gid = ctx->gid;
 
