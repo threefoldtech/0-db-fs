@@ -287,7 +287,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
         // if expected buffer length is too large
         // we won't fill it more
         if(buffer.length + entlen > size) {
-            zdbfs_debug("[+] readdir: entry %ld will be too large, chunking\n");
+            zdbfs_debug("[+] readdir: entry %ld will be too large, chunking\n", i);
             break;
         }
 
