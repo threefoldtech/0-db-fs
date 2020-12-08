@@ -182,9 +182,20 @@ zdb_inode_t *zdbfs_inode_deserialize_file(zdb_inode_t *inode, uint8_t *buffer, s
     zdb_blocks_t *blocks = (zdb_blocks_t *) (buffer + sizeof(zdb_inode_t));
 
     if(!(inode->extend[0] = malloc(length - sizeof(zdb_inode_t))))
-        diep("malloc");
+        diep("deserialize: file: malloc");
 
     memcpy(inode->extend[0], blocks, length - sizeof(zdb_inode_t));
+
+    return inode;
+}
+
+zdb_inode_t *zdbfs_inode_deserialize_symlink(zdb_inode_t *inode, uint8_t *buffer, size_t length) {
+    char *link = (char *) (buffer + sizeof(zdb_inode_t));
+
+    if(!(inode->extend[0] = malloc(length - sizeof(zdb_inode_t))))
+        diep("deserialize: symlink: malloc");
+
+    memcpy(inode->extend[0], link, length - sizeof(zdb_inode_t));
 
     return inode;
 }
@@ -203,9 +214,14 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
     memcpy(inode, buffer, sizeof(zdb_inode_t));
 
     // nothing more to do if it's not a directory
+    if(S_ISLNK(inode->mode))
+        return zdbfs_inode_deserialize_symlink(inode, buffer, length);
+
+    // handling directory
     if(!S_ISDIR(inode->mode))
         return zdbfs_inode_deserialize_file(inode, buffer, length);
 
+    // handling everything else as file
     return zdbfs_inode_deserialize_dir(inode, buffer, length);
 }
 
@@ -233,6 +249,32 @@ buffer_t zdbfs_inode_serialize_file(zdb_inode_t *inode) {
 
     // set blocks
     memcpy(&serial->extend[0], blocks, blen);
+
+    // zdbd_fulldump(serial, inolen);
+
+    buffer.buffer = serial;
+    buffer.length = inolen;
+
+    return buffer;
+}
+
+buffer_t zdbfs_inode_serialize_symlink(zdb_inode_t *inode) {
+    buffer_t buffer;
+    zdb_inode_t *serial;
+    size_t inolen = sizeof(zdb_inode_t) + inode->size + 1;
+    char *link = inode->extend[0];
+
+    if(!(serial = calloc(inolen, 1)))
+        diep("serialize: malloc");
+
+    // FIXME debug
+    memset(serial, 0x42, inolen);
+
+    // first copy the inode data
+    memcpy(serial, inode, sizeof(zdb_inode_t));
+
+    // copy symlink destination to extend
+    memcpy(&serial->extend[0], link, inode->size);
 
     // zdbd_fulldump(serial, inolen);
 
@@ -292,6 +334,18 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
 
 }
 
+buffer_t zdbfs_inode_serialize(zdb_inode_t *inode) {
+    if(S_ISDIR(inode->mode))
+        return zdbfs_inode_serialize_dir(inode);
+
+    if(S_ISLNK(inode->mode))
+        return zdbfs_inode_serialize_symlink(inode);
+
+    return zdbfs_inode_serialize_file(inode);
+}
+
+
+
 zdb_direntry_t *zdbfs_direntry_new(uint32_t ino, const char *name) {
     zdb_direntry_t *entry;
     size_t namelen = strlen(name);
@@ -335,13 +389,6 @@ zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir) {
     return dir;
 }
 
-buffer_t zdbfs_inode_serialize(zdb_inode_t *inode) {
-    if(S_ISDIR(inode->mode))
-        return zdbfs_inode_serialize_dir(inode);
-
-    return zdbfs_inode_serialize_file(inode);
-}
-
 void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode) {
     st->st_mode = inode->mode;
     st->st_uid = inode->uid;
@@ -382,6 +429,11 @@ void zdbfs_inode_free(zdb_inode_t *inode) {
 
     if(S_ISREG(inode->mode)) {
         // free file blocks
+        free(inode->extend[0]);
+    }
+
+    if(S_ISLNK(inode->mode)) {
+        // free link destination
         free(inode->extend[0]);
     }
 
@@ -520,6 +572,37 @@ zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
         diep("inode: new file: calloc");
 
     return create;
+}
+
+//
+// symlinks
+//
+zdb_inode_t *zdbfs_inode_new_symlink(fuse_req_t req, const char *link) {
+    const struct fuse_ctx *ctx = fuse_req_ctx(req);
+    size_t linklen = strlen(link) + 1;
+    zdb_inode_t *symlink;
+
+    if(!(symlink = calloc(sizeof(zdb_inode_t) + sizeof(char *), 1)))
+        diep("inode: new file: calloc");
+
+    symlink->mode = S_IFLNK | 0777;
+    symlink->ctime = time(NULL);
+    symlink->atime = symlink->ctime;
+    symlink->mtime = symlink->ctime;
+    symlink->uid = ctx->uid;
+    symlink->gid = ctx->gid;
+    symlink->size = linklen;
+    symlink->links = 1;
+
+    // copy link destination
+    if(!(symlink->extend[0] = strdup(link)))
+        diep("inode: symlink: strdup");
+
+    return symlink;
+}
+
+const char *zdbfs_inode_symlink_get(zdb_inode_t *inode) {
+    return inode->extend[0];
 }
 
 int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {

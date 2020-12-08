@@ -447,6 +447,56 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
     fuse_reply_write(req, sent);
 }
 
+void zdbfs_fuse_symlink(fuse_req_t req, const char *link, fuse_ino_t parent, const char *name) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    volino zdb_inode_t *newlink = NULL;
+    volino zdb_inode_t *directory = NULL;
+    uint32_t ino = 0;
+    struct fuse_entry_param e;
+
+    zdbfs_verbose("[+] syscall: symlink: ino %lu/%s -> %s\n", parent, name, link);
+
+    // fetching original inode information
+    if(!(directory = zdbfs_inode_fetch(req, parent)))
+        return zdbfs_fuse_error(req, ENOENT, parent);
+
+    // checking if destination does not already exists
+    if(zdbfs_inode_lookup_direntry(directory, name))
+        return zdbfs_fuse_error(req, EEXIST, parent);
+
+    // create new symlink inode
+    newlink = zdbfs_inode_new_symlink(req, link);
+
+    // save new symlink inode
+    if((ino = zdbfs_inode_store(fs->mdctx, newlink, 0)) == 0)
+        return zdbfs_fuse_error(req, EIO, 0);
+
+    // append new entry on the destination directory
+    zdbfs_inode_dir_append(directory, ino, name);
+
+    // saving new directory contents
+    if(zdbfs_inode_store(fs->mdctx, directory, parent) != parent)
+        return zdbfs_fuse_error(req, EIO, ino);
+
+    memset(&e, 0, sizeof(e));
+    e.ino = ino;
+    e.attr_timeout = KERNEL_CACHE_TIME;
+    e.entry_timeout = KERNEL_CACHE_TIME;
+
+    zdbfs_inode_to_stat(&e.attr, newlink);
+    fuse_reply_entry(req, &e);
+}
+
+void zdbfs_fuse_readlink(fuse_req_t req, fuse_ino_t ino) {
+    volino zdb_inode_t *inode = NULL;
+
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
+        return zdbfs_fuse_error(req, ENOENT, ino);
+
+    const char *link = zdbfs_inode_symlink_get(inode);
+    fuse_reply_readlink(req, link);
+}
+
 void zdbfs_fuse_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const char *newname) {
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
@@ -688,6 +738,8 @@ static const struct fuse_lowlevel_ops hello_ll_oper = {
     .rename     = zdbfs_fuse_rename,
     .flush      = zdbfs_fuse_flush,
     .link       = zdbfs_fuse_link,
+    .symlink    = zdbfs_fuse_symlink,
+    .readlink   = zdbfs_fuse_readlink,
 };
 
 int main(int argc, char *argv[]) {
