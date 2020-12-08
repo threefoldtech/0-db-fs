@@ -120,7 +120,7 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
     zdbfs_verbose("[+] syscall: setattr: ino: %ld\n", ino);
 
     // fetching current inode state
-    if(!(inode = zdbfs_fetch_inode(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
 
     memset(&stbuf, 0, sizeof(stbuf));
@@ -169,7 +169,7 @@ static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     zdbfs_verbose("[+] syscall: lookup: parent: %ld, name: %s\n", parent, name);
 
-    if(!(inode = zdbfs_fetch_directory(req, parent)))
+    if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
 
     // fillin direntry with inode contents
@@ -199,7 +199,7 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     zdbfs_verbose("[+] syscall: create: parent: %ld, name: %s\n", parent, name);
 
-    if(!(inode = zdbfs_fetch_directory(req, parent)))
+    if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
 
     // new file
@@ -231,7 +231,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 
     zdbfs_verbose("[+] syscall: mkdir: parent: %ld, name: %s\n", parent, name);
 
-    if(!(inode = zdbfs_fetch_directory(req, parent)))
+    if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
 
     // create new empty dir, sending it to the backend
@@ -264,7 +264,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 
     zdbfs_verbose("[+] syscall: readdir: %lu: size: %lu, offset: %ld\n", ino, size, off);
 
-    if(!(inode = zdbfs_fetch_directory(req, ino)))
+    if(!(inode = zdbfs_directory_fetch(req, ino)))
         return;
 
     // fillin direntry with inode contents
@@ -324,7 +324,7 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
 
     zdbfs_verbose("[+] syscall: open: ino %lu: request\n", ino);
 
-    if(!(inode = zdbfs_fetch_inode(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return;
 
     if(S_ISDIR(inode->mode))
@@ -349,7 +349,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
     zdbfs_verbose("[+] syscall: read: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
-    if(!(inode = zdbfs_fetch_inode(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, EIO, ino);
 
     // zdbfs_inode_dump(inode);
@@ -419,7 +419,7 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 
     zdbfs_verbose("[+] syscall: write: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
-    if(!(inode = zdbfs_fetch_inode(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
 
     // sending each blocks
@@ -456,11 +456,11 @@ void zdbfs_fuse_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const
     zdbfs_verbose("[+] syscall: link: ino %lu -> %lu, %s\n", ino, newparent, newname);
 
     // fetching original inode information
-    if(!(inode = zdbfs_fetch_inode(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
 
     // fetching destination directory information
-    if(!(newdir = zdbfs_fetch_inode(req, newparent)))
+    if(!(newdir = zdbfs_inode_fetch(req, newparent)))
         return zdbfs_fuse_error(req, ENOENT, newparent);
 
     // checking if destination does not already exists
@@ -502,7 +502,7 @@ void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     zdbfs_verbose("[+] syscall: unlink: parent %lu, name: %s\n", parent, name);
 
     // fetch parent directory
-    if(!(inode = zdbfs_fetch_inode(req, parent)))
+    if(!(inode = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
     // lookup for file entry in the directory
@@ -510,7 +510,7 @@ void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
         return zdbfs_fuse_error(req, ENOENT, parent);
 
     // fetching inode information about the file
-    if(!(file = zdbfs_fetch_inode(req, entry->ino)))
+    if(!(file = zdbfs_inode_fetch(req, entry->ino)))
         return zdbfs_fuse_error(req, ENOENT, entry->ino);
 
     // decrease amount of links
@@ -551,7 +551,7 @@ void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
     //
     zdbfs_verbose("[+] syscall: rmdir: parent %lu, name: %s\n", parent, name);
 
-    if(!(inode = zdbfs_fetch_inode(req, parent)))
+    if(!(inode = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
     zdb_direntry_t *expected;
@@ -562,7 +562,7 @@ void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     zdbfs_debug("[+] rmdir: entry found, inspecting ino: %u\n", expected->ino);
 
-    if(!(target = zdbfs_fetch_inode(req, expected->ino)))
+    if(!(target = zdbfs_inode_fetch(req, expected->ino)))
         return zdbfs_fuse_error(req, ENOENT, expected->ino);
 
     zdb_dir_t *targetdir = zdbfs_inode_dir_get(target);
@@ -590,7 +590,7 @@ void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char *name,
 
     zdbfs_verbose("[+] syscall: rename: %lu, name: %s -> name: %s\n", parent, name, newname);
 
-    if(!(directory = zdbfs_fetch_inode(req, parent)))
+    if(!(directory = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
     // ensure source exists
@@ -628,11 +628,11 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
     zdbfs_verbose("[+] syscall: rename: %lu, name: %s -> %lu, name: %s\n", parent, name, newparent, newname);
 
     // first checking old and new inodes
-    if(!(old = zdbfs_fetch_inode(req, parent)))
+    if(!(old = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
     // only fetch new parent if it's another directory
-    if(!(new = zdbfs_fetch_inode(req, newparent)))
+    if(!(new = zdbfs_inode_fetch(req, newparent)))
         return zdbfs_fuse_error(req, ENOENT, newparent);
 
     // ensure source exists

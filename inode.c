@@ -413,7 +413,7 @@ int zdbfs_inode_stat(fuse_req_t req, fuse_ino_t ino, struct stat *stbuf) {
     return 0;
 }
 
-zdb_inode_t *zdbfs_fetch_inode(fuse_req_t req, fuse_ino_t ino) {
+zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     zdb_reply_t *reply;
 
@@ -432,12 +432,12 @@ zdb_inode_t *zdbfs_fetch_inode(fuse_req_t req, fuse_ino_t ino) {
     return inode;
 }
 
-zdb_inode_t *zdbfs_fetch_directory(fuse_req_t req, fuse_ino_t ino) {
+zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     zdb_inode_t *inode;
 
     zdbfs_debug("[+] directory: fetch: %ld\n", ino);
 
-    if(!(inode = zdbfs_fetch_inode(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return NULL;
 
     // checking if this inode is a directory
@@ -497,6 +497,9 @@ int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
     return 0;
 }
 
+//
+// regular files
+//
 zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
     const struct fuse_ctx *ctx = fuse_req_ctx(req);
     zdb_inode_t *create;
