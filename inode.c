@@ -56,7 +56,7 @@ size_t zdbfs_offset_to_block(off_t off) {
     return block;
 }
 
-void zdbfs_inode_set_block(zdb_inode_t *inode, size_t block, uint32_t blockid) {
+void zdbfs_inode_block_set(zdb_inode_t *inode, size_t block, uint32_t blockid) {
     zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
 
     if(block + 1 > blocks->length) {
@@ -77,6 +77,17 @@ void zdbfs_inode_set_block(zdb_inode_t *inode, size_t block, uint32_t blockid) {
     }
 
     blocks->blocks[block] = blockid;
+}
+
+uint32_t zdbfs_inode_block_get(zdb_inode_t *inode, size_t block) {
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
+
+    // checking if block is already allocated
+    if(block + 1 > blocks->length)
+        return 0;
+
+    // return allocated block
+    return blocks->blocks[block];
 }
 
 size_t zdbfs_direntry_size(zdb_direntry_t *entry) {

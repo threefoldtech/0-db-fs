@@ -3,7 +3,6 @@
 
     void zdbfs_inode_dump(zdb_inode_t *inode);
     size_t zdbfs_offset_to_block(off_t off);
-    void zdbfs_inode_set_block(zdb_inode_t *inode, size_t block, uint32_t blockid);
     size_t zdbfs_inode_dir_size(zdb_dir_t *dir);
     size_t zdbfs_inode_file_size(zdb_inode_t *inode);
     zdb_dir_t *zdbfs_dir_new(uint32_t parent);
@@ -23,6 +22,9 @@
     zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode);
     zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir);
     zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint32_t ino, const char *name);
+
+    void zdbfs_inode_block_set(zdb_inode_t *inode, size_t block, uint32_t blockid);
+    uint32_t zdbfs_inode_block_get(zdb_inode_t *inode, size_t block);
 
     zdb_blocks_t *zdbfs_inode_blocks_get(zdb_inode_t *inode);
     int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode);

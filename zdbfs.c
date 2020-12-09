@@ -413,19 +413,27 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
     // sending each blocks
     while(sent < size) {
         size_t block = zdbfs_offset_to_block(off + sent);
-        uint32_t blockid;
         size_t towrite = (size > ZDBFS_BLOCK_SIZE) ? ZDBFS_BLOCK_SIZE : size;
-        zdbfs_debug("[+] write: writing %lu bytes (sent %lu / %lu)\n", towrite, sent, size);
+        uint32_t blockid = 0;
 
-        if((blockid = zdb_set(fs->datactx, 0, buf + sent, towrite)) == 0) {
+        blockid = zdbfs_inode_block_get(inode, block);
+        if(blockid != 0)
+            printf("REUSING EXISTING BLOCK: %u\n", blockid);
+
+        zdbfs_debug("[+] write: writing %lu bytes (%lu / %lu, block: %u)\n", towrite, sent, size, blockid);
+
+        if((blockid = zdb_set(fs->datactx, blockid, buf + sent, towrite)) == 0) {
             dies("write", "cannot write block to backend");
         }
 
-        zdbfs_inode_set_block(inode, block, blockid);
+        // FIXME ?
+        zdbfs_inode_block_set(inode, block, blockid);
 
         sent += towrite;
-        inode->size += towrite; // FIXME: does not support overwrite
     }
+
+    if(off + size > inode->size)
+        inode->size += sent;
 
     zdbfs_debug("[+] write: all blocks written (%lu bytes)\n", sent);
     if(zdbfs_inode_store(fs->mdctx, inode, ino) == 0) {
