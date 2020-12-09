@@ -308,6 +308,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 }
 
 static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
 
     zdbfs_verbose("[+] syscall: open: ino %lu: request\n", ino);
@@ -318,12 +319,29 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     if(S_ISDIR(inode->mode))
         return zdbfs_fuse_error(req, EISDIR, ino);
 
+    // FIXME: implement O_RDONLY, O_WRONLY, O_RDWR permission
+
+    // FIXME: support O_APPEND
+
+    // FIXME: support cache-writeback feature
+
+    if(fi->flags & O_TRUNC) {
+        zdbfs_debug("[+] open: truncating file %lu\n", ino);
+        // FIXME: discard blocks ?
+        inode->size = 0;
+    }
+
     /*
     if((fi->flags & O_ACCMODE) != O_RDONLY) {
         fuse_reply_err(req, EACCES);
         return;
     }
     */
+
+    // saving possible inode change (if nothing changed, set call will
+    // have no effect on zdb size)
+    if(zdbfs_inode_store(fs->mdctx, inode, ino) != ino)
+        return zdbfs_fuse_error(req, EIO, ino);
 
     fuse_reply_open(req, fi);
 }
