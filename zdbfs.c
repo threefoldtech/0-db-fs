@@ -344,7 +344,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
     // zdbfs_inode_dump(inode);
 
-    zdb_blocks_t *blocks = inode->extend[0];
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
 
     if(!(buffer = malloc(size)))
         diep("read: malloc buffer");
@@ -548,10 +548,12 @@ void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
     // check if inode is not linked on the filesystem
     if(file->links == 0) {
+        // delete blocks
         zdbfs_inode_blocks_remove(req, file);
 
         // delete inode itself
-        // ...
+        if(zdb_del(fs->mdctx, entry->ino) != 0)
+            return zdbfs_fuse_error(req, EIO, entry->ino);
 
     } else {
         // save updated links

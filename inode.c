@@ -21,7 +21,7 @@ void zdbfs_inode_dump(zdb_inode_t *inode) {
     printf("[+] is directory: %s\n", S_ISDIR(inode->mode) ? "yes" : "no");
 
     if(S_ISDIR(inode->mode)) {
-        zdb_dir_t *dir = inode->extend[0];
+        zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
         printf("[+] directory length: %u\n", dir->length);
 
         for(size_t i = 0; i < dir->length; i++) {
@@ -31,7 +31,7 @@ void zdbfs_inode_dump(zdb_inode_t *inode) {
     }
 
     if(S_ISREG(inode->mode)) {
-        zdb_blocks_t *blocks = inode->extend[0];
+        zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
         printf("[+] blocks length: %lu\n", blocks->length);
 
         for(size_t i = 0; i < blocks->length; i++)
@@ -57,11 +57,12 @@ size_t zdbfs_offset_to_block(off_t off) {
 }
 
 void zdbfs_inode_set_block(zdb_inode_t *inode, size_t block, uint32_t blockid) {
-    zdb_blocks_t *blocks = inode->extend[0];
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
 
     if(block + 1 > blocks->length) {
         size_t newlength = sizeof(zdb_blocks_t) + (sizeof(uint32_t) * (block + 1));
 
+        // FIXME
         if(!(inode->extend[0] = realloc(blocks, newlength)))
             diep("blocks: realloc");
 
@@ -100,7 +101,7 @@ size_t zdbfs_inode_file_size(zdb_inode_t *inode) {
     size_t length = sizeof(zdb_inode_t);
     length += sizeof(zdb_blocks_t);
 
-    zdb_blocks_t *blocks = inode->extend[0];
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
     length += blocks->length * BLOCK_SIZE;
 
     return length;
@@ -139,7 +140,7 @@ zdb_inode_t *zdbfs_inode_new_dir(uint32_t parent, uint32_t mode) {
     inode->atime = inode->ctime;
     inode->mtime = inode->ctime;
 
-    inode->extend[0] = dir;
+    zdbfs_inode_dir_set(inode, dir);
 
     return inode;
 }
@@ -233,7 +234,7 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
 buffer_t zdbfs_inode_serialize_file(zdb_inode_t *inode) {
     buffer_t buffer;
     zdb_inode_t *serial;
-    zdb_blocks_t *blocks = inode->extend[0];
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
 
     size_t blen = sizeof(zdb_blocks_t) + (blocks->length * sizeof(uint32_t));
     size_t inolen = sizeof(zdb_inode_t) + blen;
@@ -287,8 +288,8 @@ buffer_t zdbfs_inode_serialize_symlink(zdb_inode_t *inode) {
 buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
     buffer_t buffer;
     zdb_inode_t *serial;
-
-    size_t inolen = zdbfs_inode_dir_size(inode->extend[0]);
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    size_t inolen = zdbfs_inode_dir_size(dir);
 
     if(!(serial = malloc(inolen)))
         diep("serialize: malloc");
@@ -300,7 +301,6 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
     memcpy(serial, inode, sizeof(zdb_inode_t));
 
     // then copy the dir struct
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
     zdb_dir_t local = {.length = 0};
 
     // then copy each directory entries
@@ -380,6 +380,9 @@ zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint32_t ino, const char *
     return dir;
 }
 
+//
+// accessors
+//
 zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode) {
     return inode->extend[0];
 }
@@ -387,6 +390,10 @@ zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode) {
 zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir) {
     inode->extend[0] = dir;
     return dir;
+}
+
+zdb_blocks_t *zdbfs_inode_blocks_get(zdb_inode_t *inode) {
+    return inode->extend[0];
 }
 
 void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inode, uint32_t ino) {
@@ -615,8 +622,23 @@ const char *zdbfs_inode_symlink_get(zdb_inode_t *inode) {
     return inode->extend[0];
 }
 
+//
+// deletion
+//
 int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
-    printf("DELETE BLOCKS\n");
+    zdbfs_t *fs = fuse_req_userdata(req);
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
+
+    for(size_t block = 0; block < blocks->length; block++) {
+        uint32_t blockid = blocks->blocks[block];
+
+        if(zdb_del(fs->datactx, blockid) != 0)
+            return 1;
+
+        // invalidate deleted block
+        blocks->blocks[block] = 0;
+    }
+
     return 0;
 }
 

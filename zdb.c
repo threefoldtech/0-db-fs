@@ -142,6 +142,8 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
 int zdb_del(redisContext *remote, uint32_t id) {
     redisReply *reply;
 
+    zdbfs_debug("[+] zdb: del: request id: %u\n", id);
+
     if(!(reply = redisCommand(remote, "DEL %b", &id, sizeof(id))))
         diep("zdb: del");
 
