@@ -1,10 +1,22 @@
 #ifndef ZDBFS_H
     #define ZDBFS_H
 
+    #define COLOR_RED    "\033[31;1m"
+    #define COLOR_YELLOW "\033[33;1m"
+    #define COLOR_GREEN  "\033[32;1m"
+    #define COLOR_CYAN   "\033[36;1m"
+    #define COLOR_RESET  "\033[0m"
+
     #ifndef RELEASE
+        #define zdbfs_syscall(fmt, ...) { printf(COLOR_CYAN fmt COLOR_RESET, __VA_ARGS__); }
+        #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
+        #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) { printf(__VA_ARGS__); }
     #else
+        #define zdbfs_syscall(...) { printf(__VA_ARGS__); }
+        #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
+        #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) ((void)0)
     #endif
