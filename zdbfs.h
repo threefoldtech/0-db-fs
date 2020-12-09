@@ -9,8 +9,8 @@
         #define zdbfs_debug(...) ((void)0)
     #endif
 
-    #define BLOCK_SIZE          (128 * 1024)
-    #define KERNEL_CACHE_TIME   10.0
+    #define ZDBFS_BLOCK_SIZE          (128 * 1024)
+    #define ZDBFS_KERNEL_CACHE_TIME   10.0
 
     typedef struct zdb_blocks_t {
         uint64_t length;

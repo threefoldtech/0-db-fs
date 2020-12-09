@@ -51,7 +51,7 @@ static struct timespec zdbfs_time_sys(uint32_t source) {
 }
 
 size_t zdbfs_offset_to_block(off_t off) {
-    size_t block = off / BLOCK_SIZE;
+    size_t block = off / ZDBFS_BLOCK_SIZE;
     zdbfs_debug("[+] offset %ld = block: %lu\n", off, block);
     return block;
 }
@@ -102,7 +102,7 @@ size_t zdbfs_inode_file_size(zdb_inode_t *inode) {
     length += sizeof(zdb_blocks_t);
 
     zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
-    length += blocks->length * BLOCK_SIZE;
+    length += blocks->length * ZDBFS_BLOCK_SIZE;
 
     return length;
 }
@@ -400,13 +400,17 @@ void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inod
     memset(param, 0, sizeof(struct fuse_entry_param));
 
     param->ino = ino;
-    param->attr_timeout = KERNEL_CACHE_TIME;
-    param->entry_timeout = KERNEL_CACHE_TIME;
+    param->attr_timeout = ZDBFS_KERNEL_CACHE_TIME;
+    param->entry_timeout = ZDBFS_KERNEL_CACHE_TIME;
 
-    zdbfs_inode_to_stat(&param->attr, inode);
+    zdbfs_inode_to_stat(&param->attr, inode, ino);
 }
 
-void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode) {
+void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode, uint32_t ino) {
+    // cleaning target stat struct
+    memset(st, 0, sizeof(struct stat));
+
+    st->st_ino = ino;
     st->st_mode = inode->mode;
     st->st_uid = inode->uid;
     st->st_gid = inode->gid;
@@ -457,31 +461,6 @@ void zdbfs_inode_free(zdb_inode_t *inode) {
     free(inode);
 }
 
-int zdbfs_inode_stat(fuse_req_t req, fuse_ino_t ino, struct stat *stbuf) {
-    zdbfs_t *fs = fuse_req_userdata(req);
-    uint32_t inoid = ino;
-    zdb_reply_t *reply;
-
-    zdbfs_debug("[+] stat: ino: %ld\n", ino);
-
-    if(!(reply = zdb_get(fs->mdctx, inoid)))
-        return -1;
-
-    zdb_inode_t *inode = zdbfs_inode_deserialize(reply->value, reply->length);
-
-    // initialize empty stat first
-    memset(stbuf, 0, sizeof(struct stat));
-
-    // copy our inode to stat struct
-    stbuf->st_ino = ino;
-    zdbfs_inode_to_stat(stbuf, inode);
-
-    zdbfs_inode_free(inode);
-    zdb_free(reply);
-
-    return 0;
-}
-
 zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     zdb_reply_t *reply;
@@ -491,7 +470,7 @@ zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
     // if we don't have any reply from zdb, entry doesn't exists
     if(!(reply = zdb_get(fs->mdctx, ino))) {
         zdbfs_debug("[+] inode: fetch: %lu: not found\n", ino);
-        fuse_reply_err(req, ENOENT);
+        // fuse_reply_err(req, ENOENT);
         return NULL;
     }
 
@@ -637,6 +616,31 @@ int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
 
         // invalidate deleted block
         blocks->blocks[block] = 0;
+    }
+
+    return 0;
+}
+
+// remove one link of the given inode
+int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    // decrease amount of links
+    file->links -= 1;
+
+    // check if inode is not linked on the filesystem
+    if(file->links == 0) {
+        // delete blocks
+        zdbfs_inode_blocks_remove(req, file);
+
+        // delete inode itself
+        if(zdb_del(fs->mdctx, ino) != 0)
+            return 1;
+
+    } else {
+        // save updated links
+        if(zdbfs_inode_store(fs->mdctx, file, ino) != ino)
+            return 1;
     }
 
     return 0;

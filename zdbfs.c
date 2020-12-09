@@ -12,6 +12,7 @@
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
 #include <errno.h>
+#include <linux/fs.h>
 #include "zdbfs.h"
 #include "zdb.h"
 #include "inode.h"
@@ -101,14 +102,17 @@ void zdbfs_fuse_error_caller(fuse_req_t req, int err, uint32_t ino, const char *
 //
 static void zdbfs_fuse_getattr(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     struct stat stbuf;
+    volino zdb_inode_t *inode = NULL;
     (void) fi;
 
     zdbfs_verbose("[+] syscall: getattr: ino: %ld\n", ino);
 
-    if(zdbfs_inode_stat(req, ino, &stbuf))
+    if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
 
-    fuse_reply_attr(req, &stbuf, 1.0);
+    zdbfs_inode_to_stat(&stbuf, inode, ino);
+
+    fuse_reply_attr(req, &stbuf, ZDBFS_KERNEL_CACHE_TIME);
 }
 
 void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int to_set, struct fuse_file_info *fi) {
@@ -158,35 +162,29 @@ void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr, int t
         return zdbfs_fuse_error(req, EIO, ino);
 
     // send updated information back to caller
-    zdbfs_inode_to_stat(&stbuf, inode);
-    fuse_reply_attr(req, &stbuf, KERNEL_CACHE_TIME);
+    zdbfs_inode_to_stat(&stbuf, inode, ino);
+    fuse_reply_attr(req, &stbuf, ZDBFS_KERNEL_CACHE_TIME);
 }
 
 static void zdbfs_fuse_lookup(fuse_req_t req, fuse_ino_t parent, const char *name) {
     struct fuse_entry_param e;
+    volino zdb_inode_t *directory = NULL;
     volino zdb_inode_t *inode = NULL;
     zdb_direntry_t *entry;
 
     zdbfs_verbose("[+] syscall: lookup: parent: %ld, name: %s\n", parent, name);
 
-    if(!(inode = zdbfs_directory_fetch(req, parent)))
+    if(!(directory = zdbfs_directory_fetch(req, parent)))
         return;
-
-    // fillin direntry with inode contents
-    zdbfs_debug("[+] lookup: %lu: okay, looking for entry: %s\n", parent, name);
 
     // checking for entry in that directory
-    if(!(entry = zdbfs_inode_lookup_direntry(inode, name)))
+    if(!(entry = zdbfs_inode_lookup_direntry(directory, name)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
-    memset(&e, 0, sizeof(e));
-    if(zdbfs_inode_stat(req, entry->ino, &e.attr))
-        return;
+    if(!(inode = zdbfs_inode_fetch(req, entry->ino)))
+        return zdbfs_fuse_error(req, ENOENT, entry->ino);
 
-    e.ino = entry->ino;
-    e.attr_timeout = KERNEL_CACHE_TIME;
-    e.entry_timeout = KERNEL_CACHE_TIME;
-
+    zdbfs_inode_to_fuse_param(&e, inode, entry->ino);
     fuse_reply_entry(req, &e);
 }
 
@@ -315,7 +313,7 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     zdbfs_verbose("[+] syscall: open: ino %lu: request\n", ino);
 
     if(!(inode = zdbfs_inode_fetch(req, ino)))
-        return;
+        return zdbfs_fuse_error(req, ENOENT, ino);
 
     if(S_ISDIR(inode->mode))
         return zdbfs_fuse_error(req, EISDIR, ino);
@@ -373,7 +371,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         // the block
 
         // checking if request is aligned with our block
-        size_t alignment = (off % BLOCK_SIZE);
+        size_t alignment = (off % ZDBFS_BLOCK_SIZE);
 
         // computing remaining size to fetch
         size_t remain = size - fetched;
@@ -416,7 +414,7 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
     while(sent < size) {
         size_t block = zdbfs_offset_to_block(off + sent);
         uint32_t blockid;
-        size_t towrite = (size > BLOCK_SIZE) ? BLOCK_SIZE : size;
+        size_t towrite = (size > ZDBFS_BLOCK_SIZE) ? ZDBFS_BLOCK_SIZE : size;
         zdbfs_debug("[+] write: writing %lu bytes (sent %lu / %lu)\n", towrite, sent, size);
 
         if((blockid = zdb_set(fs->datactx, 0, buf + sent, towrite)) == 0) {
@@ -543,23 +541,8 @@ void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     if(!(file = zdbfs_inode_fetch(req, entry->ino)))
         return zdbfs_fuse_error(req, ENOENT, entry->ino);
 
-    // decrease amount of links
-    file->links -= 1;
-
-    // check if inode is not linked on the filesystem
-    if(file->links == 0) {
-        // delete blocks
-        zdbfs_inode_blocks_remove(req, file);
-
-        // delete inode itself
-        if(zdb_del(fs->mdctx, entry->ino) != 0)
-            return zdbfs_fuse_error(req, EIO, entry->ino);
-
-    } else {
-        // save updated links
-        if(zdbfs_inode_store(fs->mdctx, file, entry->ino) != entry->ino)
-            return zdbfs_fuse_error(req, EIO, entry->ino);
-    }
+    if(zdbfs_inode_unlink(req, file, entry->ino))
+        return zdbfs_fuse_error(req, EIO, entry->ino);
 
     // remove file from directory list
     if(zdbfs_inode_remove_entry(inode, name) != 0)
@@ -616,9 +599,9 @@ void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name) {
 
 // special handler for rename on the same directory
 void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char *name, const char *newname, unsigned int flags) {
-    (void) flags;
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *directory = NULL;
+    volino zdb_inode_t *existing = NULL;
 
     zdbfs_verbose("[+] syscall: rename: %lu, name: %s -> name: %s\n", parent, name, newname);
 
@@ -630,17 +613,32 @@ void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char *name,
     if(!(entry = zdbfs_inode_lookup_direntry(directory, name)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
+    zdb_direntry_t *target;
+    if((target = zdbfs_inode_lookup_direntry(directory, newname))) {
+        zdbfs_debug("[+] rename: target already exists\n");
+
+        // fetching target inode
+        if(!(existing = zdbfs_inode_fetch(req, target->ino)))
+            return zdbfs_fuse_error(req, EIO, target->ino);
+
+        // target already exists
+        // checking flags and unlink it if needed
+        if(flags & RENAME_NOREPLACE)
+            return zdbfs_fuse_error(req, EEXIST, target->ino);
+
+        zdbfs_inode_unlink(req, existing, target->ino);
+
+        // remove target from directory
+        zdbfs_inode_remove_entry(directory, newname);
+    }
+
     // remove original (flag it to delete)
     zdbfs_inode_remove_entry(directory, name);
-
-    // remove target (if already exists)
-    // FIXME: should unlink it !
-    zdbfs_inode_remove_entry(directory, newname);
 
     // create new direntry using same inode id
     zdbfs_inode_dir_append(directory, entry->ino, newname);
 
-    // save updated parents
+    // save updated parent
     if(zdbfs_inode_store(fs->mdctx, directory, parent) != parent)
         return zdbfs_fuse_error(req, EIO, parent);
 
@@ -651,11 +649,10 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *old = NULL;
     volino zdb_inode_t *new = NULL;
+    volino zdb_inode_t *existing = NULL;
 
     if(parent == newparent)
         return zdbfs_fuse_rename_same(req, parent, name, newname, flags);
-
-    // FIXME: parse flags
 
     zdbfs_verbose("[+] syscall: rename: %lu, name: %s -> %lu, name: %s\n", parent, name, newparent, newname);
 
@@ -672,12 +669,27 @@ void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *name, fuse
     if(!(entry = zdbfs_inode_lookup_direntry(old, name)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
+    // check if target already exists
+    zdb_direntry_t *nentry;
+    if((nentry = zdbfs_inode_lookup_direntry(new, newname))) {
+        zdbfs_debug("[+] rename: target already exists\n");
+
+        if(!(existing = zdbfs_inode_fetch(req, nentry->ino)))
+            return zdbfs_fuse_error(req, EIO, nentry->ino);
+
+        // target already exists
+        // checking flags and unlink it if needed
+        if(flags & RENAME_NOREPLACE)
+            return zdbfs_fuse_error(req, EEXIST, nentry->ino);
+
+        zdbfs_inode_unlink(req, existing, nentry->ino);
+
+        // remove target from directory
+        zdbfs_inode_remove_entry(new, newname);
+    }
+
     // remove original
     zdbfs_inode_remove_entry(old, name);
-
-    // remove new name (if exists)
-    // FIXME: should unlink it !
-    zdbfs_inode_remove_entry(new, newname);
 
     // copy direntry and copy it to new parent
     zdbfs_inode_dir_append(new, entry->ino, newname);
