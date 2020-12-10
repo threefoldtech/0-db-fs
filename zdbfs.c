@@ -297,7 +297,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
         size_t cursize = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
 
         stbuf.st_ino = entry->ino;
-        fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, i);
+        fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, i + 1);
 
         ptr += cursize;
     }
