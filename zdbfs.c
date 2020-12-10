@@ -453,8 +453,6 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
         if(towrite + alignment > ZDBFS_BLOCK_SIZE)
             writepass = ZDBFS_BLOCK_SIZE - alignment;
 
-        printf("towrite %lu, pass %lu\n", towrite, writepass);
-
         // set this chunk size
         size_t blocksize = writepass;
 
@@ -630,6 +628,7 @@ void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *name) {
     if(!(file = zdbfs_inode_fetch(req, entry->ino)))
         return zdbfs_fuse_error(req, ENOENT, entry->ino);
 
+    // remove blocks
     if(zdbfs_inode_unlink(req, file, entry->ino))
         return zdbfs_fuse_error(req, EIO, entry->ino);
 

@@ -21,6 +21,7 @@
         #define zdbfs_debug(...) ((void)0)
     #endif
 
+    // #define ZDBFS_BLOCK_SIZE          (24 * 1024)
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)
     #define ZDBFS_KERNEL_CACHE_TIME   10.0
 
