@@ -23,7 +23,7 @@
 
     // #define ZDBFS_BLOCK_SIZE          (24 * 1024)
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)
-    #define ZDBFS_KERNEL_CACHE_TIME   10.0
+    #define ZDBFS_KERNEL_CACHE_TIME   3600.0
 
     typedef struct zdb_blocks_t {
         uint64_t length;
