@@ -131,8 +131,10 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         return id;
     }
 
-    if(reply->len == sizeof(id))
+    if(reply->len == sizeof(id)) {
         memcpy(&response, reply->str, sizeof(id));
+        zdbfs_debug("[+] zdb: set: reponse id: %u\n", response);
+    }
 
     freeReplyObject(reply);
 

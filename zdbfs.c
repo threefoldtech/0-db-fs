@@ -421,37 +421,100 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
     (void) fi;
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
+    zdb_reply_t *reply;
     size_t sent = 0;
 
     zdbfs_syscall("[+] syscall: write: ino %lu: size %lu, off: %lu\n", ino, size, off);
 
+    // fetch file inode which contains blockslist
     if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
 
     // sending each blocks
     while(sent < size) {
-        size_t block = zdbfs_offset_to_block(off + sent);
-        size_t towrite = (size > ZDBFS_BLOCK_SIZE) ? ZDBFS_BLOCK_SIZE : size;
+        // set blockid as 0 (insert new)
         uint32_t blockid = 0;
 
+        // alignment is the offset inside this block
+        uint32_t alignment = (off + sent) % ZDBFS_BLOCK_SIZE;
+
+        // compute which block we use at this offset
+        size_t block = zdbfs_offset_to_block(off + sent);
+
+        // compute how many bytes to write _maximun_ on this chunk
+        // this can be larger than blocksize
+        size_t towrite = (size - sent > ZDBFS_BLOCK_SIZE) ? ZDBFS_BLOCK_SIZE : size - sent;
+
+        // keep track of this chunk length
+        size_t writepass = towrite;
+        const char *buffer = buf + sent;
+
+        // if there are any alignment, we need to take it in account
+        if(towrite + alignment > ZDBFS_BLOCK_SIZE)
+            writepass = ZDBFS_BLOCK_SIZE - alignment;
+
+        printf("towrite %lu, pass %lu\n", towrite, writepass);
+
+        // set this chunk size
+        size_t blocksize = writepass;
+
+        zdbfs_debug("[+] write: block alignment: %u, write: %lu, pass: %lu\n", alignment, towrite, writepass);
+
         blockid = zdbfs_inode_block_get(inode, block);
-        if(blockid != 0)
-            printf("REUSING EXISTING BLOCK: %u\n", blockid);
+        if(blockid != 0) {
+            // target block found on the blockslist, which mean
+            // the block already exists in the backend, we need
+            // to fetch this block to update it with new data
+            zdbfs_debug("[+] write: block already in the backend: %u\n", blockid);
 
-        zdbfs_debug("[+] write: writing %lu bytes (%lu / %lu, block: %u)\n", towrite, sent, size, blockid);
+            // resize this block size by expected buffer length
+            // following inline move
+            blocksize = alignment + writepass;
 
-        if((blockid = zdb_set(fs->datactx, blockid, buf + sent, towrite)) == 0) {
+            // fetch the block from backend
+            if(!(reply = zdb_get(fs->datactx, blockid)))
+                return zdbfs_fuse_error(req, EIO, ino);
+
+            if(reply->length > ZDBFS_BLOCK_SIZE) {
+                // critical: the fetched block from backend is larger
+                // than our configured blocksize, we can't do anything
+                // with this, blocklist is not inline with backend
+                printf("[-] write: block read from backend larger than our blocksize\n");
+                zdb_free(reply);
+                return zdbfs_fuse_error(req, EINVAL, ino);
+            }
+
+            // copying block from backend into temporarily buffer
+            memcpy(fs->tmpblock, reply->value, reply->length);
+
+            // merge existing block buffer with write chunk
+            memcpy(fs->tmpblock + alignment, buf + sent, writepass);
+
+            // replace buffer pointer by temporarily buffer
+            buffer = fs->tmpblock;
+
+            zdb_free(reply);
+        }
+
+        zdbfs_debug("[+] write: writing %lu bytes (%lu / %lu, block: %u)\n", blocksize, sent, size, blockid);
+
+        // send block to the backend, this can be a new block or an existing
+        // block updated
+        if((blockid = zdb_set(fs->datactx, blockid, buffer, blocksize)) == 0) {
             dies("write", "cannot write block to backend");
         }
 
-        // FIXME ?
+        // update inode blocklist with this block
+        // it's possible this block was already on the list
+        // this will just set it again
         zdbfs_inode_block_set(inode, block, blockid);
 
-        sent += towrite;
+        // jump to the next chunk to write
+        sent += writepass;
     }
 
     if(off + size > inode->size)
-        inode->size += sent;
+        inode->size = off + size;
 
     zdbfs_debug("[+] write: all blocks written (%lu bytes)\n", sent);
     if(zdbfs_inode_store(fs->mdctx, inode, ino) == 0) {
@@ -818,6 +881,8 @@ int main(int argc, char *argv[]) {
 
     // FIXME: cache handling
     // zdbfs.icache = (zdb_inode_t **) calloc(sizeof(zdb_inode_t *), 1024);
+    if(!(zdbfs.tmpblock = malloc(ZDBFS_BLOCK_SIZE)))
+        diep("init: malloc");
 
     // if(opts.singlethread)
     zdbfs_success("[+] fuse: ready, waiting events: %s\n", opts.mountpoint);
@@ -835,6 +900,9 @@ int main(int argc, char *argv[]) {
 
     free(opts.mountpoint);
     fuse_opt_free_args(&args);
+
+    // free block cache
+    free(zdbfs.tmpblock);
 
     // disconnect redis
     redisFree(zdbfs.mdctx);

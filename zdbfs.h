@@ -62,6 +62,7 @@
         redisContext *mdctx;
         redisContext *datactx;
         // zdb_inode_t **icache;
+        char *tmpblock;
 
     } zdbfs_t;
 
