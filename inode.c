@@ -510,7 +510,7 @@ zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     return inode;
 }
 
-uint32_t zdbfs_inode_store(redisContext *backend, zdb_inode_t *inode, uint32_t ino) {
+uint32_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, uint32_t ino) {
     buffer_t save = zdbfs_inode_serialize(inode);
     uint32_t inoret;
 
@@ -525,6 +525,16 @@ uint32_t zdbfs_inode_store(redisContext *backend, zdb_inode_t *inode, uint32_t i
     free(save.buffer);
 
     return inoret;
+}
+
+uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t ino) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    return zdbfs_inode_store_backend(fs->mdctx, inode, ino);
+}
+
+uint32_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint32_t ino) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    return zdbfs_inode_store_backend(fs->datactx, inode, ino);
 }
 
 zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name) {
@@ -652,7 +662,7 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
 
     } else {
         // save updated links
-        if(zdbfs_inode_store(fs->mdctx, file, ino) != ino)
+        if(zdbfs_inode_store_metadata(req, file, ino) != ino)
             return 1;
     }
 
@@ -708,7 +718,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     }
 
     zdb_inode_t *inode = zdbfs_inode_new_dir(1, 0755);
-    if(zdbfs_inode_store(fs->mdctx, inode, 0) != 1)
+    if(zdbfs_inode_store_backend(fs->mdctx, inode, 0) != 1)
         dies("could not create root directory", zreply->str);
 
     zdbfs_inode_free(inode);
