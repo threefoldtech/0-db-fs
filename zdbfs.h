@@ -1,6 +1,7 @@
 #ifndef ZDBFS_H
     #define ZDBFS_H
 
+    #define COLOR_GREY   "\033[30;1m"
     #define COLOR_RED    "\033[31;1m"
     #define COLOR_YELLOW "\033[33;1m"
     #define COLOR_GREEN  "\033[32;1m"
@@ -11,6 +12,7 @@
         #define zdbfs_syscall(fmt, ...) { printf(COLOR_CYAN fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
+        #define zdbfs_lowdebug(fmt, ...) { printf(COLOR_GREY fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) { printf(__VA_ARGS__); }
     #else
@@ -19,6 +21,7 @@
         #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) ((void)0)
+        #define zdbfs_lowdebug(...) ((void)0)
     #endif
 
     // #define ZDBFS_BLOCK_SIZE          (24 * 1024)

@@ -86,10 +86,10 @@ void diep(char *str) {
 #define zdbfs_fuse_error(req, err, ino) zdbfs_fuse_error_caller(req, err, ino, __func__)
 
 void zdbfs_fuse_error_caller(fuse_req_t req, int err, uint32_t ino, const char *caller) {
-    #ifdef RELEASE
+#ifdef RELEASE
     (void) ino;
     (void) caller;
-    #endif
+#endif
     zdbfs_debug(COLOR_RED "[-] %s: ino %u: %s\n" COLOR_RESET, caller, ino, strerror(err));
     fuse_reply_err(req, err);
 }
@@ -803,6 +803,7 @@ static void zdbfs_fuse_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_
 
 static void zdbfs_fuse_fsync(fuse_req_t req, fuse_ino_t ino, int datasync, struct fuse_file_info *fi) {
     (void) fi;
+    (void) datasync;
 
     zdbfs_syscall("[+] syscall: fsync: %lu\n", ino);
     fuse_reply_err(req, 0);
