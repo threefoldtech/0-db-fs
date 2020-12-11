@@ -473,11 +473,11 @@ void zdbfs_inode_free(zdb_inode_t *inode) {
     free(inode);
 }
 
-zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
+zdb_inode_t *zdbfs_inode_fetch_backend(fuse_req_t req, fuse_ino_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     zdb_reply_t *reply;
 
-    zdbfs_debug("[+] inode: fetch: %ld\n", ino);
+    zdbfs_debug("[+] inode: backend fetch: %ld\n", ino);
 
     // if we don't have any reply from zdb, entry doesn't exists
     if(!(reply = zdb_get(fs->mdctx, ino))) {
@@ -492,19 +492,39 @@ zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
     return inode;
 }
 
+zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
+    inocache_t *inocache;
+    zdb_inode_t *inode;
+
+    // cache hit
+    if((inocache = zdbfs_cache_get(req, ino)))
+        return inocache->inode;
+
+    // cache miss
+    if(!(inode = zdbfs_inode_fetch_backend(req, ino)))
+        return NULL;
+
+    // add entry to cache
+    zdbfs_cache_add(req, ino, inode);
+
+    return inode;
+}
+
 zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     zdb_inode_t *inode;
 
     zdbfs_debug("[+] directory: fetch: %ld\n", ino);
 
-    if(!(inode = zdbfs_inode_fetch(req, ino)))
+    if(!(inode = zdbfs_inode_fetch(req, ino))) {
+        fuse_reply_err(req, ENOENT);
         return NULL;
+    }
 
     // checking if this inode is a directory
     if(!S_ISDIR(inode->mode)) {
-        zdbfs_debug("[+] directory: %lu: not a directory\n", ino);
-        fuse_reply_err(req, ENOTDIR);
+        zdbfs_debug("[-] directory: %lu: not a directory\n", ino);
         zdbfs_inode_free(inode);
+        fuse_reply_err(req, ENOTDIR);
         return NULL;
     }
 
@@ -530,7 +550,26 @@ uint32_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, ui
 
 uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
-    return zdbfs_inode_store_backend(fs->mdctx, inode, ino);
+    inocache_t *inocache;
+
+    // if ino is zero, force metadata write, we don't
+    // know inoid yet, we need to get one
+    if(ino == 0) {
+        uint32_t key = zdbfs_inode_store_backend(fs->mdctx, inode, ino);
+        if(key > 0)
+            zdbfs_cache_add(req, key, inode);
+
+        return key;
+    }
+
+    // if entry is not yet in cache, pushing data to
+    // the backend
+    if(!(inocache = zdbfs_cache_get(req, ino)))
+        return zdbfs_inode_store_backend(fs->mdctx, inode, ino);
+
+    // entry in cache, delaying write
+    zdbfs_debug("[+] inode: write delayed, item in cache\n");
+    return ino;
 }
 
 uint32_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint32_t ino) {
@@ -648,6 +687,7 @@ int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
 // remove one link of the given inode
 int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
+    inocache_t *cache;
 
     // decrease amount of links
     file->links -= 1;
@@ -660,6 +700,10 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
         // delete inode itself
         if(zdb_del(fs->mdctx, ino) != 0)
             return 1;
+
+        // invalidate cache if any
+        if((cache = zdbfs_cache_get(req, ino)))
+            zdbfs_cache_drop(cache);
 
     } else {
         // save updated links

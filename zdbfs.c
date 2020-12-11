@@ -12,6 +12,7 @@
 #include <hiredis/hiredis.h>
 #include <errno.h>
 #include <linux/fs.h>
+#include <sys/epoll.h>
 #include "zdbfs.h"
 #include "zdb.h"
 #include "inode.h"
@@ -29,7 +30,11 @@
 // a function without having to write free explicitly on each
 // error case
 //
-#define volino __attribute__((cleanup(__cleanup_inode)))
+// #define volino __attribute__((cleanup(__cleanup_inode)))
+#define volino
+
+// WARNING: volino disabled for cache, this lead to
+//          major leak
 
 void __cleanup_inode(void *p) {
     zdbfs_inode_free(* (zdb_inode_t **) p);
@@ -797,8 +802,21 @@ static void zdbfs_fuse_flush(fuse_req_t req, fuse_ino_t ino, struct fuse_file_in
 
 static void zdbfs_fuse_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
     (void) fi;
+    inocache_t *inocache;
+    // zdbfs_t *fs = fuse_req_userdata(req);
 
     zdbfs_syscall("[+] syscall: release: %lu\n", ino);
+
+    if(!(inocache = zdbfs_cache_get(req, ino))) {
+        zdbfs_debug("[+] release: entry not found in cache, nothing to do\n");
+        fuse_reply_err(req, 0);
+        return;
+    }
+
+    // release
+    zdbfs_cache_release(req, inocache);
+
+    // zdbfs_inode_free(inode);
     fuse_reply_err(req, 0);
 }
 
@@ -808,6 +826,123 @@ static void zdbfs_fuse_fsync(fuse_req_t req, fuse_ino_t ino, int datasync, struc
 
     zdbfs_syscall("[+] syscall: fsync: %lu\n", ino);
     fuse_reply_err(req, 0);
+}
+
+static void zdbfs_fuse_forget(fuse_req_t req, fuse_ino_t ino, uint64_t nlookup) {
+    zdbfs_syscall("[+] syscall: forget: %lu, nlookup: %lu\n", ino, nlookup);
+    fuse_reply_none(req);
+}
+
+static void zdbfs_fuse_opendir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    (void) fi;
+
+    zdbfs_syscall("[+] syscall: opendir: %lu\n", ino);
+    fuse_reply_open(req, fi);
+}
+
+static void zdbfs_fuse_releasedir(fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi) {
+    (void) fi;
+
+    zdbfs_syscall("[+] syscall: releasedir: %lu\n", ino);
+    fuse_reply_err(req, 0);
+}
+
+static void zdbfs_fuse_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync, struct fuse_file_info *fi) {
+    (void) fi;
+    (void) datasync;
+
+    zdbfs_syscall("[+] syscall: fsyncdir: %lu\n", ino);
+    fuse_reply_err(req, 0);
+}
+
+
+// custom event loop made around libfuse
+// this event loop mostly just introduce an async read of
+// the fuse file descriptor with a custom timeout
+//
+// this enable the process to do background tasks when the filesystem
+// is not under heavy load
+int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
+	int res = 0;
+    int ffd;
+    int evfd;
+    struct epoll_event event;
+    struct epoll_event *events = NULL;
+    size_t proceed = 0;
+	struct fuse_buf fbuf = {
+		.mem = NULL,
+	};
+
+    // initialize empty struct
+    memset(&event, 0, sizeof(struct epoll_event));
+
+    // fetch fuse file descriptor
+    ffd = fuse_session_fd(se);
+
+    // initialize epoll with fuse file descriptor
+    if((evfd = epoll_create1(0)) < 0)
+        diep("epoll_create1");
+
+    event.data.fd = ffd;
+    event.events = EPOLLIN;
+
+    // only watch for read event
+    if(epoll_ctl(evfd, EPOLL_CTL_ADD, ffd, &event) < 0)
+        diep("epoll_ctl");
+
+    if(!(events = calloc(ZDBFS_EPOLL_MAXEVENTS, sizeof event)))
+        diep("event: calloc");
+
+    //
+    // main fuse loop (single threaded)
+    //
+    while(!fuse_session_exited(se)) {
+        int n = epoll_wait(evfd, events, ZDBFS_EPOLL_MAXEVENTS, timeout);
+
+        // call background cache scrubbing it
+        // there is a timeout (filesystem not under pressure)
+        // or if we proceed for specific amount of requests
+        //
+        // if the filesystem is under pressure, there can be
+        // no timeout for a long time and cache can be filled up
+        // quickly, this force scrubbing to happen
+        if(n == 0 || proceed > 32768) {
+            size_t flushed = zdbfs_cache_sync(fs);
+
+            if(flushed > 0)
+                printf("[+] cache: flushed %lu inodes\n", flushed);
+
+            // reset request counter
+            proceed = 0;
+            continue;
+        }
+
+        // fuse session is terminated if signal
+        // handler was executed, this function won't be
+        // interrupted by signal
+        if(fuse_session_exited(se))
+            break;
+
+        res = fuse_session_receive_buf(se, &fbuf);
+        proceed += 1;
+
+        if(res == -EINTR)
+            continue;
+
+        if(res <= 0)
+            break;
+
+        fuse_session_process_buf(se, &fbuf);
+    }
+
+    free(fbuf.mem);
+    free(events);
+
+    if(res > 0)
+        res = 0;
+
+    fuse_session_reset(se);
+    return res;
 }
 
 static const struct fuse_lowlevel_ops zdbfs_fuse_oper = {
@@ -830,6 +965,10 @@ static const struct fuse_lowlevel_ops zdbfs_fuse_oper = {
     .readlink   = zdbfs_fuse_readlink,
     .release    = zdbfs_fuse_release,
     .fsync      = zdbfs_fuse_fsync,
+    .forget     = zdbfs_fuse_forget,
+    .opendir    = zdbfs_fuse_opendir,
+    .releasedir = zdbfs_fuse_releasedir,
+    .fsyncdir   = zdbfs_fuse_fsyncdir,
 };
 
 int main(int argc, char *argv[]) {
@@ -896,14 +1035,20 @@ int main(int argc, char *argv[]) {
 
     // if(opts.singlethread)
     zdbfs_success("[+] fuse: ready, waiting events: %s\n", opts.mountpoint);
-    int ret = fuse_session_loop(se);
+    int ret = zdbfs_fuse_session_loop(se, &zdbfs, 1000);
     (void) config;
 
     // config.clone_fd = opts.clone_fd;
     // config.max_idle_threads = 10;
     // int ret = fuse_session_loop_mt(se, &config);
 
-    zdbfs_debug("\n[+] fuse: cleaning environment\n");
+    printf("\n[+] fuse: stopping filesystem\n");
+
+    printf("[+] cache: forcing cache flush\n");
+    size_t flushed = zdbfs_cache_clean(&zdbfs);
+    printf("[+] cache: flushed, %lu entries written\n", flushed);
+
+    zdbfs_debug("[+] fuse: cleaning environment\n");
     fuse_session_unmount(se);
     fuse_remove_signal_handlers(se);
     fuse_session_destroy(se);
