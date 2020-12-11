@@ -15,6 +15,7 @@
 #include "zdbfs.h"
 #include "zdb.h"
 #include "inode.h"
+#include "cache.h"
 
 //
 // volatile inode
@@ -886,9 +887,12 @@ int main(int argc, char *argv[]) {
     // fuse_daemonize(0);
 
     // FIXME: cache handling
-    // zdbfs.icache = (zdb_inode_t **) calloc(sizeof(zdb_inode_t *), 1024);
     if(!(zdbfs.tmpblock = malloc(ZDBFS_BLOCK_SIZE)))
-        diep("init: malloc");
+        diep("cache: malloc: block");
+
+    if(!(zdbfs.inocache = (inocache_t *) calloc(sizeof(inocache_t), ZDBFS_INOCACHE_LENGTH)))
+        diep("cache: malloc: inocache");
+
 
     // if(opts.singlethread)
     zdbfs_success("[+] fuse: ready, waiting events: %s\n", opts.mountpoint);
@@ -909,6 +913,7 @@ int main(int argc, char *argv[]) {
 
     // free block cache
     free(zdbfs.tmpblock);
+    free(zdbfs.inocache);
 
     // disconnect redis
     redisFree(zdbfs.mdctx);

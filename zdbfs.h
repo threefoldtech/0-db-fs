@@ -26,7 +26,9 @@
 
     // #define ZDBFS_BLOCK_SIZE          (24 * 1024)
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)
-    #define ZDBFS_KERNEL_CACHE_TIME   3600.0
+    #define ZDBFS_KERNEL_CACHE_TIME   60.0
+    #define ZDBFS_INOCACHE_LENGTH     2048
+    #define ZDBFS_EPOLL_MAXEVENTS     64
 
     typedef struct zdb_blocks_t {
         uint64_t length;
@@ -62,10 +64,20 @@
 
     } __attribute__((packed)) zdb_inode_t;
 
+
+    // inode cache entry
+    typedef struct inocache_t {
+        uint32_t inoid;         // inode number
+        size_t ref;             // reference count
+        zdb_inode_t *inode;     // pointer to the inode
+        time_t access;          // last access time
+
+    } inocache_t;
+
     typedef struct zdbfs_t {
         redisContext *mdctx;
         redisContext *datactx;
-        // zdb_inode_t **icache;
+        inocache_t *inocache;
         char *tmpblock;
 
     } zdbfs_t;

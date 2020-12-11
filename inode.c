@@ -14,6 +14,7 @@
 #include "zdbfs.h"
 #include "zdb.h"
 #include "inode.h"
+#include "cache.h"
 
 void zdbfs_inode_dump(zdb_inode_t *inode) {
     printf("[+] --- inode dump\n");
