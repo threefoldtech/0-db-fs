@@ -354,7 +354,6 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
 
 static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     (void) fi;
-    zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
     size_t fetched = 0;
     char *buffer;
@@ -366,8 +365,6 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
     // zdbfs_inode_dump(inode);
 
-    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
-
     if(!(buffer = malloc(size)))
         diep("read: malloc buffer");
 
@@ -375,16 +372,13 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
     while(fetched < size) {
         uint32_t block = zdbfs_offset_to_block(off);
 
-        if(block >= blocks->length) {
+        if(zdbfs_inode_block_get(inode, block) == 0) {
             zdbfs_debug("[+] read: block ouf of bounds, eof reached\n");
             break;
         }
 
-        uint32_t blockid = blocks->blocks[block];
-        zdbfs_debug("[+] read: fetching block: %u [%u], fetched: %lu\n", block, blockid, fetched);
-
         zdb_reply_t *reply;
-        if(!(reply = zdb_get(fs->datactx, blockid))) {
+        if(!(reply = zdbfs_inode_block_fetch(req, inode, ino, block))) {
             free(buffer);
             return zdbfs_fuse_error(req, EIO, ino);
         }
@@ -476,7 +470,7 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
             blocksize = alignment + writepass;
 
             // fetch the block from backend
-            if(!(reply = zdb_get(fs->datactx, blockid)))
+            if(!(reply = zdbfs_inode_block_fetch(req, inode, ino, block)))
                 return zdbfs_fuse_error(req, EIO, ino);
 
             if(reply->length > ZDBFS_BLOCK_SIZE) {
@@ -504,14 +498,9 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 
         // send block to the backend, this can be a new block or an existing
         // block updated
-        if((blockid = zdb_set(fs->datactx, blockid, buffer, blocksize)) == 0) {
+        if((blockid = zdbfs_inode_block_store(req, inode, ino, block, buffer, blocksize)) == 0) {
             dies("write", "cannot write block to backend");
         }
-
-        // update inode blocklist with this block
-        // it's possible this block was already on the list
-        // this will just set it again
-        zdbfs_inode_block_set(inode, block, blockid);
 
         // jump to the next chunk to write
         sent += writepass;

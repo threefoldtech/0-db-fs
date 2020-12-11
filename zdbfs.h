@@ -72,6 +72,9 @@
         zdb_inode_t *inode;     // pointer to the inode
         time_t access;          // last access time
 
+        uint32_t blockid;
+        char *block;
+
     } inocache_t;
 
     typedef struct zdbfs_t {

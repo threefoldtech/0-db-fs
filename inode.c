@@ -714,6 +714,37 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
     return 0;
 }
 
+zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t ino, uint32_t block) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    zdb_blocks_t *blocks = zdbfs_inode_blocks_get(file);
+    uint32_t blockid = blocks->blocks[block];
+    zdb_reply_t *reply;
+
+    zdbfs_debug("[+] <<<>>> inode: request data block %u [id %u]\n", block, blockid);
+
+    if(!(reply = zdb_get(fs->datactx, blockid))) {
+        // return zdbfs_fuse_error(req, EIO, ino);
+        return NULL;
+    }
+
+    return reply;
+}
+
+uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t ino, uint32_t block, const char *buffer, size_t buflen) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    uint32_t blockid = zdbfs_inode_block_get(inode, block);
+
+    zdbfs_debug("[+] <<<>>> inode: request WRITE block id %u\n", blockid);
+
+    if((blockid = zdb_set(fs->datactx, blockid, buffer, buflen)) == 0) {
+        dies("write", "cannot write block to backend");
+    }
+
+    zdbfs_inode_block_set(inode, block, blockid);
+
+    return blockid;
+}
+
 // first initialization of the fs
 //
 // entry 0 will be metadata about information regarding this

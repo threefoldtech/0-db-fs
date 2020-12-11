@@ -161,7 +161,9 @@ int zdb_del(redisContext *remote, uint32_t id) {
 }
 
 void zdb_free(zdb_reply_t *reply) {
-    freeReplyObject(reply->rreply);
+    if(reply->rreply)
+        freeReplyObject(reply->rreply);
+
     free(reply);
 }
 

@@ -25,6 +25,8 @@
 
     void zdbfs_inode_block_set(zdb_inode_t *inode, size_t block, uint32_t blockid);
     uint32_t zdbfs_inode_block_get(zdb_inode_t *inode, size_t block);
+    zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t ino, uint32_t block);
+    uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t ino, uint32_t blockid, const char *buffer, size_t buflen);
 
     zdb_blocks_t *zdbfs_inode_blocks_get(zdb_inode_t *inode);
     int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode);
