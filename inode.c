@@ -703,7 +703,7 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
 
         // invalidate cache if any
         if((cache = zdbfs_cache_get(req, ino)))
-            zdbfs_cache_drop(cache);
+            zdbfs_cache_drop(req, cache);
 
     } else {
         // save updated links

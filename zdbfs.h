@@ -12,6 +12,7 @@
         #define zdbfs_syscall(fmt, ...) { printf(COLOR_CYAN fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
+        #define zdbfs_warning(fmt, ...) { printf(COLOR_YELLOW fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_lowdebug(fmt, ...) { printf(COLOR_GREY fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) { printf(__VA_ARGS__); }
@@ -19,6 +20,7 @@
         #define zdbfs_syscall(...) { printf(__VA_ARGS__); }
         #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
+        #define zdbfs_warning(fmt, ...) { printf(COLOR_YELLOW fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) ((void)0)
         #define zdbfs_lowdebug(...) ((void)0)
@@ -82,6 +84,7 @@
         redisContext *datactx;
         inocache_t *inocache;
         char *tmpblock;
+        int caching;            // flag to enable runtime cache
 
     } zdbfs_t;
 

@@ -969,6 +969,7 @@ int main(int argc, char *argv[]) {
     zdbfs_t zdbfs = {
         .mdctx = NULL,
         .datactx = NULL,
+        .caching = 1,
     };
 
 
@@ -1021,6 +1022,9 @@ int main(int argc, char *argv[]) {
     if(!(zdbfs.inocache = (inocache_t *) calloc(sizeof(inocache_t), ZDBFS_INOCACHE_LENGTH)))
         diep("cache: malloc: inocache");
 
+
+    if(zdbfs.caching == 0)
+        zdbfs_warning("[+] warning: cache disabled [%d]\n", zdbfs.caching);
 
     // if(opts.singlethread)
     zdbfs_success("[+] fuse: ready, waiting events: %s\n", opts.mountpoint);

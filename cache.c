@@ -27,15 +27,20 @@ void zdbfs_cache_dump(fuse_req_t req) {
 }
 #endif
 
+int zdbfs_cache_enabled(zdbfs_t *fs) {
+    return fs->caching;
+}
+
 //
 // cache system
 //
 inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
-#ifndef ZDBFS_CACHE_ENABLED
-    (void) req;
-    (void) ino;
-#else
     zdbfs_t *fs = fuse_req_userdata(req);
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return NULL;
+
     zdbfs_lowdebug("[+] cache: lookup inode: %u\n", ino);
 
     for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
@@ -57,19 +62,17 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
     }
 
     zdbfs_lowdebug("[-] cache: miss inode: %u\n", ino);
-#endif
 
     return NULL;
 }
 
 inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
-#ifndef ZDBFS_CACHE_ENABLED
-    (void) req;
-    (void) ino;
-    (void) inode;
-#else
     zdbfs_t *fs = fuse_req_userdata(req);
     inocache_t *cache;
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return NULL;
 
     // if ino already in cache, reuse it and
     // increase reference counter
@@ -98,16 +101,15 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
     zdbfs_lowdebug("[-] cache: cache full (inode %u)\n", ino);
     // zdbfs_cache_dump(req);
 
-#endif
     return NULL;
 }
 
 void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
-#ifndef ZDBFS_CACHE_ENABLED
-    (void) req;
-    (void) cache;
-#else
     zdbfs_t *fs = fuse_req_userdata(req);
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return;
 
     zdbfs_lowdebug("[+] cache: release inode: %u\n", cache->inoid);
 
@@ -124,14 +126,15 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
         // FIXME: cache->inoid = 0;
         // FIXME: maybe invalidate/flush inode
     }
-#endif
 }
 
-void zdbfs_cache_drop(inocache_t *cache) {
-#ifndef ZDBFS_CACHE_ENABLED
-    (void) req;
-    (void) cache;
-#else
+void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return;
+
     zdbfs_lowdebug("[+] cache: drop inode: %u\n", cache->inoid);
 
     cache->ref = 0;
@@ -139,11 +142,15 @@ void zdbfs_cache_drop(inocache_t *cache) {
 
     // zdbfs_inode_free(cache->inode);
     cache->inode = NULL;
-#endif
 }
 
 size_t zdbfs_cache_sync(zdbfs_t *fs) {
     size_t cleared = 0;
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return 0;
+
 
     // checking each cache entries and check
     // if entry were added few time ago or more
@@ -184,6 +191,10 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
 
 size_t zdbfs_cache_clean(zdbfs_t *fs) {
     size_t flushed = 0;
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return 0;
 
     // clean and unallocate all entries
     for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
