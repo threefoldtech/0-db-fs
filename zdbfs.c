@@ -680,6 +680,7 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
 static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char *name, const char *newname, unsigned int flags) {
     volino zdb_inode_t *directory = NULL;
     volino zdb_inode_t *existing = NULL;
+    uint32_t sourceino = 0;
 
     zdbfs_syscall("[+] syscall: rename: %lu, name: %s -> name: %s\n", parent, name, newname);
 
@@ -690,6 +691,9 @@ static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char
     zdb_direntry_t *entry;
     if(!(entry = zdbfs_inode_lookup_direntry(directory, name)))
         return zdbfs_fuse_error(req, ENOENT, parent);
+
+    // keep track of the source inode id
+    sourceino = entry->ino;
 
     zdb_direntry_t *target;
     if((target = zdbfs_inode_lookup_direntry(directory, newname))) {
@@ -714,7 +718,7 @@ static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char
     zdbfs_inode_remove_entry(directory, name);
 
     // create new direntry using same inode id
-    zdbfs_inode_dir_append(directory, entry->ino, newname);
+    zdbfs_inode_dir_append(directory, sourceino, newname);
 
     // save updated parent
     if(zdbfs_inode_store_metadata(req, directory, parent) != parent)
@@ -727,6 +731,7 @@ static void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *nam
     volino zdb_inode_t *old = NULL;
     volino zdb_inode_t *new = NULL;
     volino zdb_inode_t *existing = NULL;
+    uint32_t sourceino = 0;
 
     if(parent == newparent)
         return zdbfs_fuse_rename_same(req, parent, name, newname, flags);
@@ -745,6 +750,9 @@ static void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *nam
     zdb_direntry_t *entry;
     if(!(entry = zdbfs_inode_lookup_direntry(old, name)))
         return zdbfs_fuse_error(req, ENOENT, parent);
+
+    // keep track of the source inode id
+    sourceino = entry->ino;
 
     // check if target already exists
     zdb_direntry_t *nentry;
@@ -769,7 +777,7 @@ static void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *nam
     zdbfs_inode_remove_entry(old, name);
 
     // copy direntry and copy it to new parent
-    zdbfs_inode_dir_append(new, entry->ino, newname);
+    zdbfs_inode_dir_append(new, sourceino, newname);
 
     // save updated parents
     if(zdbfs_inode_store_metadata(req, old, parent) != parent)

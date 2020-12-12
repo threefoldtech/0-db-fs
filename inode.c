@@ -592,6 +592,7 @@ zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name
 
 int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
     zdb_direntry_t *entry;
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
 
     if(!(entry = zdbfs_inode_lookup_direntry(inode, name)))
         return 1;
@@ -603,7 +604,27 @@ int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
     memset(entry->name, 0, entry->size);
     entry->size = 0;
 
-    return 0;
+    // swap last entry with this entry
+    // FIXME: optimize
+    for(size_t i = 0; i < dir->length; i++) {
+        if(dir->entries[i] == entry) {
+            // move last item into this spot
+            // and reduce length by one
+            dir->entries[i] = dir->entries[dir->length - 1];
+            dir->length -= 1;
+
+            // we don't need this entry anymore
+            free(entry);
+
+            // directory list updated, leaving
+            return 0;
+        }
+    }
+
+    printf("UNLINK ERROR RESIZE\n");
+
+    // something went wrong on re-order
+    return 1;
 }
 
 //
