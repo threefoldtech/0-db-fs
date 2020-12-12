@@ -79,12 +79,20 @@
 
     } inocache_t;
 
+    typedef struct cachest_t {
+        size_t hit;
+        size_t miss;
+        size_t full;
+
+    } cachest_t;
+
     typedef struct zdbfs_t {
         redisContext *mdctx;
         redisContext *datactx;
         inocache_t *inocache;
         char *tmpblock;
         int caching;            // flag to enable runtime cache
+        cachest_t cachest;
 
     } zdbfs_t;
 

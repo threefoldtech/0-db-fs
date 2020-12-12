@@ -31,6 +31,18 @@ int zdbfs_cache_enabled(zdbfs_t *fs) {
     return fs->caching;
 }
 
+static void zdbfs_cache_stats_hit(zdbfs_t *fs) {
+    fs->cachest.hit += 1;
+}
+
+static void zdbfs_cache_stats_miss(zdbfs_t *fs) {
+    fs->cachest.miss += 1;
+}
+
+static void zdbfs_cache_stats_full(zdbfs_t *fs) {
+    fs->cachest.full += 1;
+}
+
 //
 // cache system
 //
@@ -56,12 +68,14 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
                 cache->ref += 1;
 
             cache->access = time(NULL);
+            zdbfs_cache_stats_hit(fs);
 
             return &fs->inocache[i];
         }
     }
 
     zdbfs_lowdebug("[-] cache: miss inode: %u\n", ino);
+    zdbfs_cache_stats_miss(fs);
 
     return NULL;
 }
@@ -99,6 +113,7 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
 
     // no more space available
     zdbfs_lowdebug("[-] cache: cache full (inode %u)\n", ino);
+    zdbfs_cache_stats_full(fs);
     // zdbfs_cache_dump(req);
 
     return NULL;
@@ -212,9 +227,26 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
             flushed += 1;
         }
 
+        if(cache->block) {
+            printf("flushing block\n");
+
+            uint32_t blockid = zdbfs_inode_block_get(cache->inode, cache->blockidx);
+            if(zdb_set(fs->datactx, blockid, cache->block, cache->blocksize) != blockid) {
+                dies("CACHE clean", "wrong block write\n");
+            }
+
+            free(cache->block);
+        }
+
         // final unallocation
         zdbfs_inode_free(cache->inode);
     }
 
     return flushed;
+}
+
+void zdbfs_cache_stats(zdbfs_t *fs) {
+    zdbfs_lowdebug("[+] cache: total hit : %lu\n", fs->cachest.hit);
+    zdbfs_lowdebug("[+] cache: total miss: %lu\n", fs->cachest.miss);
+    zdbfs_lowdebug("[+] cache: total full: %lu\n", fs->cachest.full);
 }

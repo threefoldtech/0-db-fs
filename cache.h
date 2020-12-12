@@ -9,4 +9,7 @@
     // check for cache content and apply old changes
     size_t zdbfs_cache_sync(zdbfs_t *fs);
     size_t zdbfs_cache_clean(zdbfs_t *fs);
+
+    // dump cache statistics
+    void zdbfs_cache_stats(zdbfs_t *fs);
 #endif

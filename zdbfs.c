@@ -1041,6 +1041,8 @@ int main(int argc, char *argv[]) {
     size_t flushed = zdbfs_cache_clean(&zdbfs);
     printf("[+] cache: flushed, %lu entries written\n", flushed);
 
+    zdbfs_cache_stats(&zdbfs);
+
     zdbfs_debug("[+] fuse: cleaning environment\n");
     fuse_session_unmount(se);
     fuse_remove_signal_handlers(se);
