@@ -19,13 +19,18 @@
 // static char *host = "10.241.0.232";
 static char *host = "127.0.0.1";
 
-int zdb_select(redisContext *remote, char *namespace) {
+static int zdb_select(redisContext *remote, char *namespace, char *password) {
     redisReply *reply;
 
     zdbfs_debug("[+] zdb: select: request namespace: %s\n", namespace);
 
-    if(!(reply = redisCommand(remote, "SELECT %s", namespace)))
-        diep(namespace);
+    if(password) {
+        if(!(reply = redisCommand(remote, "SELECT %s %s", namespace, password)))
+            diep(namespace);
+    } else {
+        if(!(reply = redisCommand(remote, "SELECT %s", namespace)))
+            diep(namespace);
+    }
 
     if(strcmp(reply->str, "OK") != 0)
         dies("metadata namespacd", reply->str);
@@ -67,29 +72,53 @@ zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
 }
 
 int zdbfs_zdb_connect(zdbfs_t *fs) {
+    //
+    // metadata
+    //
     zdbfs_debug("[+] zdb: connecting metadata zdb\n");
 
     if(!(fs->metactx = redisConnect(host, 9900)))
         diep("zdb: init");
 
     if(fs->metactx->err) {
-        fprintf(stderr, "[-] zdb: %s\n", fs->metactx->errstr);
+        fprintf(stderr, "[-] zdb: meta: %s\n", fs->metactx->errstr);
         return 1;
     }
 
+    //
+    // data
+    //
     zdbfs_debug("[+] zdb: connecting data zdb\n");
     if(!(fs->datactx = redisConnect(host, 9900)))
         diep("zdb: init");
 
     if(fs->datactx->err) {
-        fprintf(stderr, "[-] zdb: %s\n", fs->datactx->errstr);
+        fprintf(stderr, "[-] zdb: data: %s\n", fs->datactx->errstr);
         return 1;
     }
 
-    if(zdb_select(fs->metactx, "metadata"))
+    //
+    // temporary blocks
+    //
+    zdbfs_debug("[+] zdb: connecting temp zdb\n");
+    if(!(fs->tempctx = redisConnect(host, 9900)))
+        diep("zdb: init");
+
+    if(fs->tempctx->err) {
+        fprintf(stderr, "[-] zdb: temp: %s\n", fs->tempctx->errstr);
+        return 1;
+    }
+
+    //
+    // select namespaces
+    //
+    if(zdb_select(fs->metactx, "zdbfs-meta", NULL))
         return 1;
 
-    if(zdb_select(fs->datactx, "fsdata"))
+    if(zdb_select(fs->datactx, "zdbfs-data", NULL))
+        return 1;
+
+    if(zdb_select(fs->tempctx, "zdbfs-temp", "hello"))
         return 1;
 
     return 0;
