@@ -35,6 +35,37 @@ int zdb_select(redisContext *remote, char *namespace) {
     return 0;
 }
 
+static size_t zdb_nsinfo_sizeval(char *buffer, char *entry) {
+    char *match;
+
+    if(!(match = strstr(buffer, entry)))
+        return 0;
+
+    match += strlen(entry) + 2;
+
+    return strtoumax(match, NULL, 10);
+}
+
+zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
+    zdb_nsinfo_t *nsinfo;
+    redisReply *reply;
+
+    if(!(nsinfo = calloc(sizeof(zdb_nsinfo_t), 1)))
+        diep("zdb: nsinfo: calloc");
+
+    zdbfs_debug("[+] zdb: nsinfo: request namespace: %s\n", namespace);
+
+    if(!(reply = redisCommand(remote, "NSINFO %s", namespace)))
+        diep(namespace);
+
+    nsinfo->entries = zdb_nsinfo_sizeval(reply->str, "entries");
+    nsinfo->datasize = zdb_nsinfo_sizeval(reply->str, "data_size_bytes");
+
+    freeReplyObject(reply);
+
+    return nsinfo;
+}
+
 int zdbfs_zdb_connect(zdbfs_t *fs) {
     zdbfs_debug("[+] zdb: connecting metadata zdb\n");
 

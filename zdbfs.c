@@ -919,21 +919,32 @@ static void zdbfs_fuse_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync, st
 
 static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     (void) ino;
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->mdctx, "metadata");
+    zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, "fsdata");
+
+    // hardcode 10G for debug
+    uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
+    size_t fragment = 1024;
 
     // FIXME: hardcoded values
     struct statvfs vfs = {
         .f_bsize = ZDBFS_BLOCK_SIZE,
-        .f_frsize = 1024,
-        .f_blocks = 10 * 1024 * 1024,
-        .f_bfree = 10 * 1024 * 1024,
-        .f_bavail = 10 * 1024 * 1024,
-        .f_files = 1,
-        .f_ffree = 500,
-        .f_favail = 1000,
-        .f_fsid = 0,
+        .f_frsize = fragment,
+        .f_blocks = sizefs / fragment,
+        .f_bfree = (sizefs - data->datasize) / fragment,
+        .f_bavail = (sizefs - data->datasize) / fragment,
+        .f_files = 0xffffffff,
+        .f_ffree = 0xffffffff - metadata->entries,
+        .f_favail = 0xffffffff - metadata->entries,
+        .f_fsid = 1,
         .f_flag = 0,
         .f_namemax = 255,
     };
+
+    free(metadata);
+    free(data);
 
     fuse_reply_statfs(req, &vfs);
 }
