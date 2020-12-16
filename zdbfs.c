@@ -1086,6 +1086,7 @@ int main(int argc, char *argv[]) {
     zdbfs_t zdbfs = {
         .metactx = NULL,
         .datactx = NULL,
+        .tempctx = NULL,
         .caching = 1,
     };
 
@@ -1175,6 +1176,7 @@ int main(int argc, char *argv[]) {
     // disconnect redis
     redisFree(zdbfs.metactx);
     redisFree(zdbfs.datactx);
+    redisFree(zdbfs.tempctx);
 
     return ret;
 }
