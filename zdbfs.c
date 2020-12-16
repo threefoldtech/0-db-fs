@@ -917,6 +917,26 @@ static void zdbfs_fuse_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync, st
     fuse_reply_err(req, 0);
 }
 
+static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
+    (void) ino;
+
+    // FIXME: hardcoded values
+    struct statvfs vfs = {
+        .f_bsize = ZDBFS_BLOCK_SIZE,
+        .f_frsize = 1024,
+        .f_blocks = 10 * 1024 * 1024,
+        .f_bfree = 10 * 1024 * 1024,
+        .f_bavail = 10 * 1024 * 1024,
+        .f_files = 1,
+        .f_ffree = 500,
+        .f_favail = 1000,
+        .f_fsid = 0,
+        .f_flag = 0,
+        .f_namemax = 255,
+    };
+
+    fuse_reply_statfs(req, &vfs);
+}
 
 // custom event loop made around libfuse
 // this event loop mostly just introduce an async read of
@@ -1031,6 +1051,7 @@ static const struct fuse_lowlevel_ops zdbfs_fuse_oper = {
     .opendir    = zdbfs_fuse_opendir,
     .releasedir = zdbfs_fuse_releasedir,
     .fsyncdir   = zdbfs_fuse_fsyncdir,
+    .statfs     = zdbfs_fuse_statfs,
 };
 
 int main(int argc, char *argv[]) {
