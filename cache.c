@@ -202,7 +202,7 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
     if(cache->ref == 0) {
         zdbfs_lowdebug("[+] cache: inode not linked anymore: %u, flushing\n", cache->inoid);
 
-        if(zdbfs_inode_store_backend(fs->mdctx, cache->inode, cache->inoid) != cache->inoid) {
+        if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
             dies("CACHE", "WRITE FAILED WATRNINFDFJDKLF JDKLF\n");
         }
 
@@ -280,7 +280,7 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
 
         zdbfs_lowdebug("[+] cache: inode cache expired: %u, flushing\n", cache->inoid);
 
-        if(zdbfs_inode_store_backend(fs->mdctx, cache->inode, cache->inoid) != cache->inoid) {
+        if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
             dies("cache", "could not write inode in the backend\n");
         }
 
@@ -309,7 +309,7 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
             zdbfs_lowdebug("[+] cache: forcing inode flush: %u\n", cache->inoid);
 
             // flush still referenced cache entries
-            if(zdbfs_inode_store_backend(fs->mdctx, cache->inode, cache->inoid) != cache->inoid) {
+            if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
                 dies("cache", "could not write inode in the backend\n");
             }
 

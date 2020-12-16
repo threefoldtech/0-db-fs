@@ -481,7 +481,7 @@ zdb_inode_t *zdbfs_inode_fetch_backend(fuse_req_t req, fuse_ino_t ino) {
     zdbfs_debug("[+] inode: backend fetch: %ld\n", ino);
 
     // if we don't have any reply from zdb, entry doesn't exists
-    if(!(reply = zdb_get(fs->mdctx, ino))) {
+    if(!(reply = zdb_get(fs->metactx, ino))) {
         zdbfs_debug("[+] inode: fetch: %lu: not found\n", ino);
         // fuse_reply_err(req, ENOENT);
         return NULL;
@@ -556,7 +556,7 @@ uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t
     // if ino is zero, force metadata write, we don't
     // know inoid yet, we need to get one
     if(ino == 0) {
-        uint32_t key = zdbfs_inode_store_backend(fs->mdctx, inode, ino);
+        uint32_t key = zdbfs_inode_store_backend(fs->metactx, inode, ino);
         if(key > 0)
             zdbfs_cache_add(req, key, inode);
 
@@ -731,7 +731,7 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
         zdbfs_inode_blocks_remove(req, file);
 
         // delete inode itself
-        if(zdb_del(fs->mdctx, ino) != 0)
+        if(zdb_del(fs->metactx, ino) != 0)
             return 1;
 
         // invalidate cache if any
@@ -872,7 +872,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     zdbfs_debug("[+] filesystem: checking backend\n");
 
     // checking if entry 0 exists
-    if((reply = zdb_get(fs->mdctx, 0))) {
+    if((reply = zdb_get(fs->metactx, 0))) {
         if(strncmp((char *) reply->value, "zdbfs ", 6) == 0) {
             zdbfs_debug("[+] filesystem: metadata already contains a valid filesystem\n");
             zdb_free(reply);
@@ -886,7 +886,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     redisReply *zreply;
 
     // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->mdctx, "SET %b %s", NULL, 0, msg)))
+    if(!(zreply = redisCommand(fs->metactx, "SET %b %s", NULL, 0, msg)))
         diep("redis: set basic metadata");
 
     if(memcmp(zreply->str, &expected, zreply->len) != 0)
@@ -898,14 +898,14 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     //
     // create initial root directory (if not there)
     //
-    if((reply = zdb_get(fs->mdctx, 1))) {
+    if((reply = zdb_get(fs->metactx, 1))) {
         zdbfs_debug("[+] filesystem: metadata already contains a valid root directory\n");
         zdb_free(reply);
         return 0;
     }
 
     zdb_inode_t *inode = zdbfs_inode_new_dir(1, 0755);
-    if(zdbfs_inode_store_backend(fs->mdctx, inode, 0) != 1)
+    if(zdbfs_inode_store_backend(fs->metactx, inode, 0) != 1)
         dies("could not create root directory", zreply->str);
 
     zdbfs_inode_free(inode);

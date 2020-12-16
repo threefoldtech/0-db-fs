@@ -69,11 +69,11 @@ zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
 int zdbfs_zdb_connect(zdbfs_t *fs) {
     zdbfs_debug("[+] zdb: connecting metadata zdb\n");
 
-    if(!(fs->mdctx = redisConnect(host, 9900)))
+    if(!(fs->metactx = redisConnect(host, 9900)))
         diep("zdb: init");
 
-    if(fs->mdctx->err) {
-        fprintf(stderr, "[-] zdb: %s\n", fs->mdctx->errstr);
+    if(fs->metactx->err) {
+        fprintf(stderr, "[-] zdb: %s\n", fs->metactx->errstr);
         return 1;
     }
 
@@ -86,7 +86,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
         return 1;
     }
 
-    if(zdb_select(fs->mdctx, "metadata"))
+    if(zdb_select(fs->metactx, "metadata"))
         return 1;
 
     if(zdb_select(fs->datactx, "fsdata"))

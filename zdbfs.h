@@ -97,10 +97,11 @@
     } cachest_t;
 
     typedef struct zdbfs_t {
-        redisContext *mdctx;
+        redisContext *metactx;
         redisContext *datactx;
         inocache_t *inocache;
         char *tmpblock;
+
         int caching;            // flag to enable runtime cache
         cachest_t cachest;
 

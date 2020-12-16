@@ -926,7 +926,7 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     (void) ino;
     zdbfs_t *fs = fuse_req_userdata(req);
 
-    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->mdctx, "metadata");
+    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->metactx, "metadata");
     zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, "fsdata");
 
     // hardcode 10G for debug
@@ -1084,7 +1084,7 @@ int main(int argc, char *argv[]) {
     struct fuse_loop_config config;
 
     zdbfs_t zdbfs = {
-        .mdctx = NULL,
+        .metactx = NULL,
         .datactx = NULL,
         .caching = 1,
     };
@@ -1173,7 +1173,7 @@ int main(int argc, char *argv[]) {
     free(zdbfs.inocache);
 
     // disconnect redis
-    redisFree(zdbfs.mdctx);
+    redisFree(zdbfs.metactx);
     redisFree(zdbfs.datactx);
 
     return ret;
