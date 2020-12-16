@@ -73,6 +73,7 @@
         uint32_t blockidx;
         char *data;
         size_t blocksize;
+        size_t hits;
 
     } blockcache_t;
 

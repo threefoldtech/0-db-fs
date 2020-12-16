@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <time.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
 #include "zdbfs.h"

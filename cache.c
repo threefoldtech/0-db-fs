@@ -62,9 +62,12 @@ blockcache_t *zdbfs_cache_block_get(inocache_t *cache, uint32_t blockidx) {
     // update cache hit time
     cache->access = time(NULL);
 
-    for(size_t i = 0; i < cache->blocks; i++)
-        if(cache->blcache[i]->blockidx == blockidx)
+    for(size_t i = 0; i < cache->blocks; i++) {
+        if(cache->blcache[i]->blockidx == blockidx) {
+            cache->blcache[i]->hits += 1;
             return cache->blcache[i];
+        }
+    }
 
     return NULL;
 }
@@ -83,6 +86,7 @@ blockcache_t *zdbfs_cache_block_add(inocache_t *cache, uint32_t blockidx) {
     block->blockidx = blockidx;
     block->data = NULL;
     block->blocksize = 0;
+    block->hits = 0;
 
     // update cache hit time
     cache->access = time(NULL);
@@ -100,6 +104,7 @@ blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, si
 
     memcpy(cache->data, data, blocksize);
     cache->blocksize = blocksize;
+    cache->hits += 1;
 
     return cache;
 }
@@ -207,6 +212,8 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
             for(size_t i = 0; i < cache->blocks; i++) {
                 blockcache_t *blc = cache->blcache[i];
                 uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
+
+                printf("RELEASE BLOCK %lu: hits %lu\n", i, blc->hits);
 
                 if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
                     dies("CACHE FLISH", "wrong write\n");
