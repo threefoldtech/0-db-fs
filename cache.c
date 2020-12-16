@@ -33,15 +33,15 @@ int zdbfs_cache_enabled(zdbfs_t *fs) {
 }
 
 static void zdbfs_cache_stats_hit(zdbfs_t *fs) {
-    fs->cachest.hit += 1;
+    fs->stats.cache_hit += 1;
 }
 
 static void zdbfs_cache_stats_miss(zdbfs_t *fs) {
-    fs->cachest.miss += 1;
+    fs->stats.cache_miss += 1;
 }
 
 static void zdbfs_cache_stats_full(zdbfs_t *fs) {
-    fs->cachest.full += 1;
+    fs->stats.cache_full += 1;
 }
 
 //
@@ -361,9 +361,9 @@ static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
 }
 
 void zdbfs_cache_stats(zdbfs_t *fs) {
-    zdbfs_lowdebug("[+] cache: total hit : %lu\n", fs->cachest.hit);
-    zdbfs_lowdebug("[+] cache: total miss: %lu\n", fs->cachest.miss);
-    zdbfs_lowdebug("[+] cache: total full: %lu\n", fs->cachest.full);
+    zdbfs_lowdebug("[+] cache: total hit : %lu\n", fs->stats.cache_hit);
+    zdbfs_lowdebug("[+] cache: total miss: %lu\n", fs->stats.cache_miss);
+    zdbfs_lowdebug("[+] cache: total full: %lu\n", fs->stats.cache_full);
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
