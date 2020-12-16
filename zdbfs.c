@@ -926,9 +926,15 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
 
     // hardcode 10G for debug
     uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
-    size_t fragment = 1024;
+    size_t fragment = 1024;  // optional, could be 1 and no division
 
-    // FIXME: hardcoded values
+    // maximum inodes is uint32_t maximun value
+    // (maximum keys available on namespace)
+
+    // available inodes is total inodes without
+    // current amount of entries
+    // FIXME: should be substracted by next entries
+
     struct statvfs vfs = {
         .f_bsize = ZDBFS_BLOCK_SIZE,
         .f_frsize = fragment,
@@ -1000,6 +1006,7 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
         // no timeout for a long time and cache can be filled up
         // quickly, this force scrubbing to happen
         if(n == 0 || proceed > 32768) {
+            zdbfs_cache_stats(fs);
             size_t flushed = zdbfs_cache_sync(fs);
 
             if(flushed > 0)

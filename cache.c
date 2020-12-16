@@ -339,8 +339,36 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
     return flushed;
 }
 
+static size_t zdbfs_cache_stats_entries(zdbfs_t *fs) {
+    size_t entries = 0;
+
+    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++)
+        if(fs->inocache[i].ref > 0)
+            entries += 1;
+
+    return entries;
+}
+
+static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
+    size_t size = 0;
+
+    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++)
+        if(fs->inocache[i].blocks > 0)
+            for(size_t j = 0; j < fs->inocache[i].blocks; j++)
+                size += fs->inocache[i].blcache[j]->blocksize;
+
+    return size;
+}
+
 void zdbfs_cache_stats(zdbfs_t *fs) {
     zdbfs_lowdebug("[+] cache: total hit : %lu\n", fs->cachest.hit);
     zdbfs_lowdebug("[+] cache: total miss: %lu\n", fs->cachest.miss);
     zdbfs_lowdebug("[+] cache: total full: %lu\n", fs->cachest.full);
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return;
+
+    zdbfs_lowdebug("[+] cache: current entries: %lu\n", zdbfs_cache_stats_entries(fs));
+    zdbfs_lowdebug("[+] cache: current blocksize: %lu bytes\n", zdbfs_cache_stats_blocksize(fs));
 }
