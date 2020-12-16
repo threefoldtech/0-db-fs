@@ -715,6 +715,9 @@ int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
 }
 
 // remove one link of the given inode
+// returns 0 if unlink succeed
+//         1 on error
+//         2 on reference decremented
 int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     inocache_t *cache;
@@ -735,13 +738,15 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
         if((cache = zdbfs_cache_get(req, ino)))
             zdbfs_cache_drop(req, cache);
 
+        return 0;
+
     } else {
         // save updated links
         if(zdbfs_inode_store_metadata(req, file, ino) != ino)
             return 1;
     }
 
-    return 0;
+    return 2;
 }
 
 zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t ino, uint32_t block) {

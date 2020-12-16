@@ -666,6 +666,7 @@ static void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *nam
     volino zdb_inode_t *inode = NULL;
     volino zdb_inode_t *file = NULL;
     zdb_direntry_t *entry;
+    int linkinfo;
 
     //
     // FIXME: no forget support
@@ -685,8 +686,12 @@ static void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *nam
         return zdbfs_fuse_error(req, ENOENT, entry->ino);
 
     // remove blocks
-    if(zdbfs_inode_unlink(req, file, entry->ino))
+    if((linkinfo = zdbfs_inode_unlink(req, file, entry->ino)) == 1)
         return zdbfs_fuse_error(req, EIO, entry->ino);
+
+    // reset file pointer if dropped
+    if(linkinfo == 0)
+        file = NULL;
 
     // remove file from directory list
     if(zdbfs_inode_remove_entry(inode, name) != 0)
@@ -1006,7 +1011,7 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
         // no timeout for a long time and cache can be filled up
         // quickly, this force scrubbing to happen
         if(n == 0 || proceed > 32768) {
-            zdbfs_cache_stats(fs);
+            // zdbfs_cache_stats(fs);
             size_t flushed = zdbfs_cache_sync(fs);
 
             if(flushed > 0)
