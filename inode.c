@@ -225,6 +225,7 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
 
     // copy inode from buffer to inode, as it
     memcpy(inode, buffer, sizeof(zdb_inode_t));
+    inode->ino = 0; // FIXME: cache fix
 
     // nothing more to do if it's not a directory
     if(S_ISLNK(inode->mode))
@@ -505,7 +506,7 @@ zdb_inode_t *zdbfs_inode_fetch(fuse_req_t req, fuse_ino_t ino) {
         return NULL;
 
     // add entry to cache
-    zdbfs_cache_add(req, ino, inode);
+    // zdbfs_cache_add(req, ino, inode);
 
     return inode;
 }
@@ -562,10 +563,18 @@ uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t
         return key;
     }
 
-    // if entry is not yet in cache, pushing data to
+    /*
+    // if entry is not yet in cache, pushing metadata to
     // the backend
     if(!(inocache = zdbfs_cache_get(req, ino)))
         return zdbfs_inode_store_backend(fs->mdctx, inode, ino);
+    */
+
+    if(!(inocache = zdbfs_cache_get(req, ino))) {
+        printf("store requested and inode not in cache, adding\n");
+        zdbfs_cache_add(req, ino, inode);
+    }
+
 
     // entry in cache, delaying write
     zdbfs_debug("[+] inode: write delayed, item in cache\n");
@@ -740,8 +749,32 @@ zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t
     zdb_blocks_t *blocks = zdbfs_inode_blocks_get(file);
     uint32_t blockid = blocks->blocks[block];
     zdb_reply_t *reply;
+    inocache_t *cache;
 
-    zdbfs_debug("[+] <<<>>> inode: request data block %u [id %u]\n", block, blockid);
+    zdbfs_debug("[+] <<<<<< inode: request data block %u [id %u]\n", block, blockid);
+
+    // check cache first
+    if((cache = zdbfs_cache_get(req, ino))) {
+        blockcache_t *blc;
+
+        if((blc = zdbfs_cache_block_get(cache, block))) {
+            if(!(reply = malloc(sizeof(zdb_reply_t))))
+                diep("inode: block fetch: malloc");
+
+            zdbfs_debug("[+] block: cache hit\n");
+            reply->rreply = NULL;
+
+            if(!(reply->value = malloc(blc->blocksize)))
+                diep("cache duplicate block malloc");
+
+            memcpy(reply->value, blc->data, blc->blocksize);
+            reply->length = blc->blocksize;
+
+            return reply;
+        }
+
+        zdbfs_debug("[+] block: cache miss, but inode in cache\n");
+    }
 
     if(!(reply = zdb_get(fs->datactx, blockid))) {
         // return zdbfs_fuse_error(req, EIO, ino);
@@ -753,14 +786,66 @@ zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t
 
 uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t ino, uint32_t block, const char *buffer, size_t buflen) {
     zdbfs_t *fs = fuse_req_userdata(req);
+
     uint32_t blockid = zdbfs_inode_block_get(inode, block);
+    zdbfs_debug("[+] >>>>>> inode: request WRITE block %u\n", block);
 
-    zdbfs_debug("[+] <<<>>> inode: request WRITE block id %u\n", blockid);
+    inocache_t *cache;
+    if(!(cache = zdbfs_cache_get(req, ino))) {
+        zdbfs_debug("[+] block: store: inode not in cache, direct write\n");
 
-    if((blockid = zdb_set(fs->datactx, blockid, buffer, buflen)) == 0) {
-        dies("write", "cannot write block to backend");
+        // no cache available, force flush
+        if((blockid = zdb_set(fs->datactx, blockid, buffer, buflen)) == 0) {
+            dies("write", "cannot write block to backend");
+        }
+
+        // force block update
+        //
+        // update inode blocklist with this block
+        // it's possible this block was already on the list
+        // this will just set it again
+        zdbfs_inode_block_set(inode, block, blockid);
+        return blockid;
     }
 
+    blockcache_t *blc;
+
+    if(!(blc = zdbfs_cache_block_get(cache, block))) {
+        zdbfs_debug("[+] block: store: add new block in cache\n");
+
+        /*
+        uint32_t saved = zdbfs_inode_block_get(inode, cache->blockidx);
+        if((saved = zdb_set(fs->datactx, saved, cache->block, cache->blocksize)) == 0) {
+            dies("write", "cannot write block to backend");
+        }
+
+        // update block list
+        zdbfs_inode_block_set(inode, block, saved);
+
+        free(cache->block);
+        cache->block = NULL;
+        cache->blocksize = 0;
+        */
+
+        blc = zdbfs_cache_block_add(cache, block);
+    }
+
+    zdbfs_debug("[+] block: store: update block cache content\n");
+    zdbfs_cache_block_update(blc, buffer, buflen);
+
+    if(blockid == 0) {
+        // attributing a blockid to that block
+        if((blockid = zdb_set(fs->datactx, 0, "", 0)) == 0) {
+            // FIXME ??
+            dies("write", "cannot write empty block to backend");
+        }
+
+        zdbfs_debug("[+] block: store: new blockid: %u\n", blockid);
+    }
+
+    // request update blockslist at least to glow the
+    // list if this id was not set yet, even if block
+    // is in cache and not assigned yet
     zdbfs_inode_block_set(inode, block, blockid);
 
     return blockid;

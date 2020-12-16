@@ -66,7 +66,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
 zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
     zdb_reply_t *reply;
 
-    zdbfs_debug("[+] zdb: get: request inode: %u\n", id);
+    zdbfs_debug("[+] zdb: get: request id: %u\n", id);
 
     if(!(reply = calloc(sizeof(zdb_reply_t), 1)))
         diep("zdb: get: malloc");
@@ -102,7 +102,7 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     uint32_t *rid = &id;
     size_t rsize = sizeof(id);
 
-    zdbfs_debug("[+] zdb: set: request inode: %u\n", id);
+    zdbfs_debug("[+] zdb: set: update id: %u, %lu bytes\n", id, length);
 
     // create new entry
     if(id == 0) {
@@ -161,6 +161,9 @@ int zdb_del(redisContext *remote, uint32_t id) {
 }
 
 void zdb_free(zdb_reply_t *reply) {
+    if(!reply->rreply)
+        free(reply->value);
+
     if(reply->rreply)
         freeReplyObject(reply->rreply);
 

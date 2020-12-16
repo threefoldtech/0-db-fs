@@ -17,7 +17,8 @@
         #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
         #define zdbfs_debug(...) { printf(__VA_ARGS__); }
     #else
-        #define zdbfs_syscall(...) { printf(__VA_ARGS__); }
+        // #define zdbfs_syscall(...) { printf(__VA_ARGS__); }
+        #define zdbfs_syscall(...) ((void)0)
         #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
         #define zdbfs_warning(fmt, ...) { printf(COLOR_YELLOW fmt COLOR_RESET, __VA_ARGS__); }
@@ -28,8 +29,8 @@
 
     // #define ZDBFS_BLOCK_SIZE          (24 * 1024)
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)
-    #define ZDBFS_KERNEL_CACHE_TIME   60.0
-    #define ZDBFS_INOCACHE_LENGTH     2048
+    #define ZDBFS_KERNEL_CACHE_TIME   5.0
+    #define ZDBFS_INOCACHE_LENGTH     4095
     #define ZDBFS_EPOLL_MAXEVENTS     64
 
     typedef struct zdb_blocks_t {
@@ -53,13 +54,13 @@
 
     typedef struct zdb_inode_t {
         uint32_t mode;
-        uint32_t ino;
+        uint32_t ino; // FIXME: not needed
         uint32_t dev;
         uint16_t uid;
         uint16_t gid;
         uint64_t size;
         uint32_t links;
-        uint32_t atime;
+        uint32_t atime;  // FIXME: won't support
         uint32_t mtime;
         uint32_t ctime;
         void *extend[];
@@ -68,14 +69,21 @@
 
 
     // inode cache entry
+    typedef struct blockcache_t {
+        uint32_t blockidx;
+        char *data;
+        size_t blocksize;
+
+    } blockcache_t;
+
     typedef struct inocache_t {
         uint32_t inoid;         // inode number
         size_t ref;             // reference count
         zdb_inode_t *inode;     // pointer to the inode
         time_t access;          // last access time
 
-        uint32_t blockid;
-        char *block;
+        size_t blocks;
+        blockcache_t **blcache;
 
     } inocache_t;
 

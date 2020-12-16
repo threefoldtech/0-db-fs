@@ -30,14 +30,21 @@
 // a function without having to write free explicitly on each
 // error case
 //
-// #define volino __attribute__((cleanup(__cleanup_inode)))
-#define volino
+#define volino __attribute__((cleanup(__cleanup_inode)))
+// #define volino
 
 // WARNING: volino disabled for cache, this lead to
 //          major leak
 
 void __cleanup_inode(void *p) {
-    zdbfs_inode_free(* (zdb_inode_t **) p);
+    zdb_inode_t *x = * (zdb_inode_t **) p;
+    if(x == NULL)
+        return;
+
+    if(x->ino == 0)
+        zdbfs_inode_free(x);
+
+    // zdbfs_inode_free(* (zdb_inode_t **) p);
 }
 
 //
@@ -259,8 +266,10 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 
     zdbfs_syscall("[+] syscall: readdir: %lu: size: %lu, offset: %ld\n", ino, size, off);
 
-    if(!(inode = zdbfs_directory_fetch(req, ino)))
+    if(!(inode = zdbfs_directory_fetch(req, ino))) {
+        printf("FAILED\n");
         return;
+    }
 
     // fillin direntry with inode contents
     zdbfs_debug("[+] readdir: %lu: okay, fillin entries\n", ino);
@@ -325,6 +334,12 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     if(S_ISDIR(inode->mode))
         return zdbfs_fuse_error(req, EISDIR, ino);
 
+    if(fi->flags & O_RDONLY) {
+        zdbfs_debug("[+] open: read only requested %lu\n", ino);
+        fuse_reply_open(req, fi);
+        return;
+    }
+
     // FIXME: implement O_RDONLY, O_WRONLY, O_RDWR permission
 
     // FIXME: support O_APPEND
@@ -335,6 +350,14 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
         zdbfs_debug("[+] open: truncating file %lu\n", ino);
         // FIXME: discard blocks ?
         inode->size = 0;
+
+        // saving possible inode change (if nothing changed, set call will
+        // have no effect on zdb size)
+        if(zdbfs_inode_store_metadata(req, inode, ino) != ino)
+            return zdbfs_fuse_error(req, EIO, ino);
+
+        fuse_reply_open(req, fi);
+        return;
     }
 
     /*
@@ -343,11 +366,6 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
         return;
     }
     */
-
-    // saving possible inode change (if nothing changed, set call will
-    // have no effect on zdb size)
-    if(zdbfs_inode_store_metadata(req, inode, ino) != ino)
-        return zdbfs_fuse_error(req, EIO, ino);
 
     fuse_reply_open(req, fi);
 }
@@ -365,16 +383,31 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
     // zdbfs_inode_dump(inode);
 
-    if(!(buffer = malloc(size)))
+    if(!(buffer = calloc(size, 1)))
         diep("read: malloc buffer");
 
     // for each block to read
     while(fetched < size) {
         uint32_t block = zdbfs_offset_to_block(off);
 
+        // checking if request is aligned with our block
+        size_t alignment = (off % ZDBFS_BLOCK_SIZE);
+
         if(zdbfs_inode_block_get(inode, block) == 0) {
-            zdbfs_debug("[+] read: block ouf of bounds, eof reached\n");
-            break;
+            // block id from requested offset returned 0
+            // this mean this block doesn't exists _or_ the block
+            // is set to 0, if the block doesn't contains any data
+            // if it's a hole, in case of a hole, we need to returns
+            // valid response and not truncated response
+            zdbfs_debug("[+] read: requested block does not exists or empty\n");
+
+            size_t eob = ZDBFS_BLOCK_SIZE - alignment;
+            zdbfs_debug("[+] read: skipping this block, moving forward: %lu bytes\n", eob);
+
+            fetched += eob;
+            off += eob;
+
+            continue;
         }
 
         zdb_reply_t *reply;
@@ -383,13 +416,16 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
             return zdbfs_fuse_error(req, EIO, ino);
         }
 
+        if(reply->length < alignment) {
+            zdbfs_debug("[+] read: try to read further than any data on this block\n");
+            zdb_free(reply);
+            break;
+        }
+
         // fetched block contains something we need
         // the full block can be used, or partial content
         // partial content can be anywhere and any length inside
         // the block
-
-        // checking if request is aligned with our block
-        size_t alignment = (off % ZDBFS_BLOCK_SIZE);
 
         // computing remaining size to fetch
         size_t remain = size - fetched;
@@ -410,6 +446,19 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
         fetched += chunk;
         off += chunk;
+    }
+
+    // avoid overrun if we skipped hole larger
+    // than expected
+    if(fetched > size)
+        fetched = size;
+
+    // if the chunk requested is in range of the file
+    // we are maybe inside a hole and we need to reply
+    // the full length
+    if(off + size < inode->size && fetched != size) {
+        zdbfs_debug("[+] read: growing chunk read, hole possible\n");
+        fetched = size;
     }
 
     fuse_reply_buf(req, buffer, fetched);
@@ -447,16 +496,21 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 
         // keep track of this chunk length
         size_t writepass = towrite;
-        const char *buffer = buf + sent;
+        // const char *buffer = buf + sent;
+        const char *buffer = fs->tmpblock;
 
         // if there are any alignment, we need to take it in account
         if(towrite + alignment > ZDBFS_BLOCK_SIZE)
             writepass = ZDBFS_BLOCK_SIZE - alignment;
 
         // set this chunk size
-        size_t blocksize = writepass;
+        // size_t blocksize = alignment + writepass;
+        size_t blocksize = alignment + writepass;
 
         zdbfs_debug("[+] write: block alignment: %u, write: %lu, pass: %lu\n", alignment, towrite, writepass);
+
+        // FIXME: optimize ?
+        memset(fs->tmpblock, 0, ZDBFS_BLOCK_SIZE);
 
         blockid = zdbfs_inode_block_get(inode, block);
         if(blockid != 0) {
@@ -482,24 +536,34 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
                 return zdbfs_fuse_error(req, EINVAL, ino);
             }
 
+            // if fetched block is larger than what we need to write
+            // updating blocksize to read size
+            if(reply->length > blocksize)
+                blocksize = reply->length;
+
             // copying block from backend into temporarily buffer
             memcpy(fs->tmpblock, reply->value, reply->length);
 
             // merge existing block buffer with write chunk
-            memcpy(fs->tmpblock + alignment, buf + sent, writepass);
+            // memcpy(fs->tmpblock + alignment, buf + sent, writepass);
 
             // replace buffer pointer by temporarily buffer
-            buffer = fs->tmpblock;
+            // buffer = fs->tmpblock;
 
+            // FIXME
             zdb_free(reply);
         }
 
         zdbfs_debug("[+] write: writing %lu bytes (%lu / %lu, block: %u)\n", blocksize, sent, size, blockid);
 
+        // merge existing block buffer with write chunk
+        memcpy(fs->tmpblock + alignment, buf + sent, writepass);
+
         // send block to the backend, this can be a new block or an existing
         // block updated
         if((blockid = zdbfs_inode_block_store(req, inode, ino, block, buffer, blocksize)) == 0) {
-            dies("write", "cannot write block to backend");
+            // dies("write", "cannot write block to backend");
+            printf("inode store returned zero\n");
         }
 
         // jump to the next chunk to write
@@ -812,6 +876,7 @@ static void zdbfs_fuse_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_
 
     // release
     zdbfs_cache_release(req, inocache);
+    // zdbfs_inode_dump(inocache->inode);
 
     // zdbfs_inode_free(inode);
     fuse_reply_err(req, 0);

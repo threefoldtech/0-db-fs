@@ -10,6 +10,7 @@
 #include "zdbfs.h"
 #include "inode.h"
 #include "cache.h"
+#include "zdb.h"
 
 #define ZDBFS_CACHE_ENABLED
 
@@ -41,6 +42,66 @@ static void zdbfs_cache_stats_miss(zdbfs_t *fs) {
 
 static void zdbfs_cache_stats_full(zdbfs_t *fs) {
     fs->cachest.full += 1;
+}
+
+//
+// block cache system
+//
+void zdbfs_cache_block_free(inocache_t *cache) {
+    for(size_t i = 0; i < cache->blocks; i++) {
+        free(cache->blcache[i]->data);
+        free(cache->blcache[i]);
+    }
+
+    free(cache->blcache);
+    cache->blocks = 0;
+    cache->blcache = NULL;
+}
+
+blockcache_t *zdbfs_cache_block_get(inocache_t *cache, uint32_t blockidx) {
+    // update cache hit time
+    cache->access = time(NULL);
+
+    for(size_t i = 0; i < cache->blocks; i++)
+        if(cache->blcache[i]->blockidx == blockidx)
+            return cache->blcache[i];
+
+    return NULL;
+}
+
+blockcache_t *zdbfs_cache_block_add(inocache_t *cache, uint32_t blockidx) {
+    cache->blocks += 1;
+
+    if(!(cache->blcache = realloc(cache->blcache, sizeof(blockcache_t **) * cache->blocks)))
+        diep("cache: blocks: realloc");
+
+    if(!(cache->blcache[cache->blocks - 1] = malloc(sizeof(blockcache_t))))
+        diep("cache: block: malloc");
+
+    blockcache_t *block = cache->blcache[cache->blocks - 1];
+
+    block->blockidx = blockidx;
+    block->data = NULL;
+    block->blocksize = 0;
+
+    // update cache hit time
+    cache->access = time(NULL);
+
+    return block;
+}
+
+blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, size_t blocksize) {
+    if(cache->blocksize != blocksize) {
+        free(cache->data);
+
+        if(!(cache->data = malloc(blocksize)))
+            diep("cache: block update: mallo");
+    }
+
+    memcpy(cache->data, data, blocksize);
+    cache->blocksize = blocksize;
+
+    return cache;
 }
 
 //
@@ -100,12 +161,14 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
         if(cache->inoid == 0 || cache->ref == 0) {
             // free any previous entry
             zdbfs_inode_free(cache->inode);
+            zdbfs_cache_block_free(cache);
 
             zdbfs_lowdebug("[+] cache: add inode: %u\n", ino);
             cache->inoid = ino;
             cache->ref = 1;
             cache->inode = inode;
             cache->access = time(NULL);
+            cache->inode->ino = 1; // FIXME: cache flag
 
             return &fs->inocache[i];
         }
@@ -138,9 +201,26 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
             dies("CACHE", "WRITE FAILED WATRNINFDFJDKLF JDKLF\n");
         }
 
+        if(cache->blocks > 0) {
+            zdbfs_debug("[+] cache: blocks available, flushing\n");
+
+            for(size_t i = 0; i < cache->blocks; i++) {
+                blockcache_t *blc = cache->blcache[i];
+                uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
+
+                if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
+                    dies("CACHE FLISH", "wrong write\n");
+                }
+            }
+
+            zdbfs_cache_block_free(cache);
+        }
+
         // FIXME: cache->inoid = 0;
         // FIXME: maybe invalidate/flush inode
     }
+
+    // zdbfs_cache_block_free(
 }
 
 void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
@@ -154,6 +234,9 @@ void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
 
     cache->ref = 0;
     cache->inoid = 0;
+
+    zdbfs_inode_free(cache->inode);
+    zdbfs_cache_block_free(cache);
 
     // zdbfs_inode_free(cache->inode);
     cache->inode = NULL;
@@ -227,15 +310,19 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
             flushed += 1;
         }
 
-        if(cache->block) {
-            printf("flushing block\n");
+        if(cache->blocks > 0) {
+            zdbfs_debug("[+] cache: blocks available, flushing\n");
 
-            uint32_t blockid = zdbfs_inode_block_get(cache->inode, cache->blockidx);
-            if(zdb_set(fs->datactx, blockid, cache->block, cache->blocksize) != blockid) {
-                dies("CACHE clean", "wrong block write\n");
+            for(size_t i = 0; i < cache->blocks; i++) {
+                blockcache_t *blc = cache->blcache[i];
+                uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
+
+                if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
+                    dies("CACHE FLISH", "wrong write\n");
+                }
             }
 
-            free(cache->block);
+            zdbfs_cache_block_free(cache);
         }
 
         // final unallocation
