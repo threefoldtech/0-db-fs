@@ -960,6 +960,12 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     fuse_reply_statfs(req, &vfs);
 }
 
+static void zdbfs_stats_dump(zdbfs_t *fs) {
+    stats_t *s = &fs->stats;
+
+    zdbfs_lowdebug("[+] stats: fuse: requests: %lu\n", s->fuse_reqs);
+}
+
 // custom event loop made around libfuse
 // this event loop mostly just introduce an async read of
 // the fuse file descriptor with a custom timeout
@@ -1038,6 +1044,7 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
             break;
 
         fuse_session_process_buf(se, &fbuf);
+        fs->stats.fuse_reqs += 1;
     }
 
     free(fbuf.mem);
@@ -1096,6 +1103,8 @@ int main(int argc, char *argv[]) {
     zdbfs_zdb_connect(&zdbfs);
     zdbfs_initialize_filesystem(&zdbfs);
 
+    // initialize statistics to zero
+    memset(&zdbfs.stats, 0x00, sizeof(stats_t));
 
     if(fuse_parse_cmdline(&args, &opts) != 0)
         return 1;
@@ -1160,6 +1169,7 @@ int main(int argc, char *argv[]) {
     printf("[+] cache: flushed, %lu entries written\n", flushed);
 
     zdbfs_cache_stats(&zdbfs);
+    zdbfs_stats_dump(&zdbfs);
 
     zdbfs_debug("[+] fuse: cleaning environment\n");
     fuse_session_unmount(se);

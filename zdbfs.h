@@ -90,6 +90,8 @@
     } inocache_t;
 
     typedef struct stats_t {
+        size_t fuse_reqs;
+
         size_t cache_hit;
         size_t cache_miss;
         size_t cache_full;
