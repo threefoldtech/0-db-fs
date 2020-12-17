@@ -926,8 +926,8 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     (void) ino;
     zdbfs_t *fs = fuse_req_userdata(req);
 
-    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->metactx, "metadata");
-    zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, "fsdata");
+    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->metactx, "zdbfs-meta");
+    zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, "zdbfs-data");
 
     // hardcode 10G for debug
     uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
