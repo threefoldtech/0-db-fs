@@ -43,8 +43,6 @@ void __cleanup_inode(void *p) {
 
     if(x->ino == 0)
         zdbfs_inode_free(x);
-
-    // zdbfs_inode_free(* (zdb_inode_t **) p);
 }
 
 //
@@ -963,7 +961,7 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
 static void zdbfs_stats_dump(zdbfs_t *fs) {
     stats_t *s = &fs->stats;
 
-    zdbfs_lowdebug("[+] stats: fuse: requests: %lu\n", s->fuse_reqs);
+    printf("[+] stats: fuse: requests: %lu\n", s->fuse_reqs);
 }
 
 // custom event loop made around libfuse
@@ -1021,7 +1019,7 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
             size_t flushed = zdbfs_cache_sync(fs);
 
             if(flushed > 0)
-                printf("[+] cache: flushed %lu inodes\n", flushed);
+                zdbfs_debug("[+] cache: flushed %lu inodes\n", flushed);
 
             // reset request counter
             proceed = 0;

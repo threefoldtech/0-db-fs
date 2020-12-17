@@ -14,8 +14,8 @@
     void zdbfs_cache_stats(zdbfs_t *fs);
 
     // blocks
-    blockcache_t *zdbfs_cache_block_get(inocache_t *cache, uint32_t blockidx);
-    blockcache_t *zdbfs_cache_block_add(inocache_t *cache, uint32_t blockidx);
+    blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t blockidx);
+    blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t blockidx);
     blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, size_t blocksize);
     void zdbfs_cache_block_free(inocache_t *cache);
 #endif

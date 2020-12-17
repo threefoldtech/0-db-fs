@@ -7,27 +7,16 @@
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
 #include <time.h>
+#include <sys/time.h>
+#include <float.h>
 #include "zdbfs.h"
 #include "inode.h"
 #include "cache.h"
 #include "zdb.h"
 
-#define ZDBFS_CACHE_ENABLED
-
-#if 0
-void zdbfs_cache_dump(fuse_req_t req) {
-    zdbfs_t *fs = fuse_req_userdata(req);
-
-    for(size_t i = 0; i < INOCACHE_LENGTH; i++) {
-        inocache_t *cache = &fs->inocache[i];
-        if(!cache->inode)
-            continue;
-
-        printf(">> cache %3lu: %c [%lu] -- %lu\n", i, S_ISDIR(cache->inode->mode) ? 'D' : 'X', cache->ref, cache->inode->size);
-    }
-}
-#endif
-
+//
+// cache statistics
+//
 int zdbfs_cache_enabled(zdbfs_t *fs) {
     return fs->caching;
 }
@@ -47,6 +36,84 @@ static void zdbfs_cache_stats_full(zdbfs_t *fs) {
 //
 // block cache system
 //
+
+// get current time in microseconds double
+double zdbfs_cache_time_now() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + (tv.tv_usec / 1000000.0);
+}
+
+static blockcache_t *zdbfs_cache_block_first_online(inocache_t *cache) {
+    for(size_t i = 0; i < cache->blocks; i++)
+        if(cache->blcache[i]->online == 1)
+            return cache->blcache[i];
+
+    return NULL;
+}
+
+static blockcache_t *zdbfs_cache_block_oldest_online(inocache_t *cache) {
+    blockcache_t *online = zdbfs_cache_block_first_online(cache);
+    blockcache_t *oldest = online;
+
+    for(size_t i = 0; i < cache->blocks; i++) {
+        blockcache_t *block = cache->blcache[i];
+
+        if(block->online == 1 && block->atime < oldest->atime)
+            oldest = block;
+    }
+
+    return oldest;
+}
+
+static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cache) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    // looking for oldest (smaller last access time) online block entry
+    blockcache_t *oldest = zdbfs_cache_block_oldest_online(cache);
+
+    // move that block in temporary table
+    if((oldest->offid = zdb_set(fs->tempctx, oldest->offid, oldest->data, oldest->blocksize)) == 0) {
+        dies("cache delegate", "wrong write\n");
+    }
+
+    zdbfs_lowdebug("[+] cache: delegate: moved temporarily: %u\n", oldest->offid);
+
+    // free block data and flag entry as offline
+    free(oldest->data);
+    oldest->data = NULL;
+    oldest->online = 0;
+
+    // reduce online cache size
+    cache->blonline -= 1;
+
+    return oldest;
+}
+
+static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_t *block) {
+    zdb_reply_t *reply = NULL;
+
+    zdbfs_lowdebug("[-] cache: block offloaded, fetching it back: %u\n", block->offid);
+
+    if(!(reply = zdb_get(fs->tempctx, block->offid))) {
+        zdbfs_debug("[-] cache: temporary: %u: not found\n", block->offid);
+        return 1;
+    }
+
+    if(!(block->data = malloc(reply->length)))
+        diep("cache: block: restore: malloc");
+
+    memcpy(block->data, reply->value, reply->length);
+    block->blocksize = reply->length;
+    block->online = 1;
+    cache->blonline += 1;
+
+    zdbfs_lowdebug("[+] cache: block offloaded restored, %lu bytes read\n", block->blocksize);
+    zdb_free(reply);
+
+    return 0;
+}
+
 void zdbfs_cache_block_free(inocache_t *cache) {
     for(size_t i = 0; i < cache->blocks; i++) {
         free(cache->blcache[i]->data);
@@ -55,25 +122,48 @@ void zdbfs_cache_block_free(inocache_t *cache) {
 
     free(cache->blcache);
     cache->blocks = 0;
+    cache->blonline = 0;
     cache->blcache = NULL;
 }
 
-blockcache_t *zdbfs_cache_block_get(inocache_t *cache, uint32_t blockidx) {
+blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t blockidx) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
     // update cache hit time
-    cache->access = time(NULL);
+    cache->atime = zdbfs_cache_time_now();
 
     for(size_t i = 0; i < cache->blocks; i++) {
-        if(cache->blcache[i]->blockidx == blockidx) {
-            cache->blcache[i]->hits += 1;
-            return cache->blcache[i];
+        blockcache_t *block = cache->blcache[i];
+
+        if(block->blockidx == blockidx) {
+            block->hits += 1;
+            block->atime = zdbfs_cache_time_now();
+
+            // restore offloaded block is not present online
+            if(block->online == 0)
+                if(zdbfs_cache_block_restore(fs, cache, block))
+                    return NULL;
+
+            return block;
         }
     }
 
     return NULL;
 }
 
-blockcache_t *zdbfs_cache_block_add(inocache_t *cache, uint32_t blockidx) {
+void zdbfs_cache_block_hit(blockcache_t *block) {
+    block->hits += 1;
+    block->atime = zdbfs_cache_time_now();
+}
+
+blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t blockidx) {
+    if(cache->blonline + 1 > ZDBFS_BLOCKS_CACHE_LIMIT) {
+        zdbfs_lowdebug("[-] cache: too many blocks online [%lu], offloading\n", cache->blonline);
+        zdbfs_cache_block_delegate(req, cache);
+    }
+
     cache->blocks += 1;
+    cache->blonline += 1;
 
     if(!(cache->blcache = realloc(cache->blcache, sizeof(blockcache_t **) * cache->blocks)))
         diep("cache: blocks: realloc");
@@ -87,13 +177,17 @@ blockcache_t *zdbfs_cache_block_add(inocache_t *cache, uint32_t blockidx) {
     block->data = NULL;
     block->blocksize = 0;
     block->hits = 0;
+    block->online = 1;
+    block->offid = 0;
 
     // update cache hit time
-    cache->access = time(NULL);
+    cache->atime = zdbfs_cache_time_now();
 
     return block;
 }
 
+// note: this function doesn't check if block were offloaded of not
+//       this check needs to be done before calling it (by get or add)
 blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, size_t blocksize) {
     if(cache->blocksize != blocksize) {
         free(cache->data);
@@ -104,7 +198,9 @@ blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, si
 
     memcpy(cache->data, data, blocksize);
     cache->blocksize = blocksize;
-    cache->hits += 1;
+
+    // update hits and access time
+    zdbfs_cache_block_hit(cache);
 
     return cache;
 }
@@ -133,7 +229,7 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
             if(cache->ref == 0)
                 cache->ref += 1;
 
-            cache->access = time(NULL);
+            cache->atime = zdbfs_cache_time_now();
             zdbfs_cache_stats_hit(fs);
 
             return &fs->inocache[i];
@@ -172,7 +268,7 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
             cache->inoid = ino;
             cache->ref = 1;
             cache->inode = inode;
-            cache->access = time(NULL);
+            cache->atime = zdbfs_cache_time_now();
             cache->inode->ino = 1; // FIXME: cache flag
 
             return &fs->inocache[i];
@@ -185,6 +281,32 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
     // zdbfs_cache_dump(req);
 
     return NULL;
+}
+
+static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
+    if(cache->blocks == 0)
+        return;
+
+    zdbfs_debug("[+] cache: release: blocks available, flushing\n");
+
+    for(size_t i = 0; i < cache->blocks; i++) {
+        blockcache_t *blc = cache->blcache[i];
+
+        if(blc->online == 0)
+            if(zdbfs_cache_block_restore(fs, cache, blc))
+                return;
+
+        uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
+
+        zdbfs_lowdebug("[+] cache: release: flushing block %lu [hits %lu]\n", i, blc->hits);
+
+        if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
+            dies("cache flush", "wrong write\n");
+        }
+    }
+
+    // free all blocks
+    zdbfs_cache_block_free(cache);
 }
 
 void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
@@ -203,31 +325,14 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
         zdbfs_lowdebug("[+] cache: inode not linked anymore: %u, flushing\n", cache->inoid);
 
         if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
-            dies("CACHE", "WRITE FAILED WATRNINFDFJDKLF JDKLF\n");
+            dies("cache release", "could not write to backend\n");
         }
 
-        if(cache->blocks > 0) {
-            zdbfs_debug("[+] cache: blocks available, flushing\n");
-
-            for(size_t i = 0; i < cache->blocks; i++) {
-                blockcache_t *blc = cache->blcache[i];
-                uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
-
-                printf("RELEASE BLOCK %lu: hits %lu\n", i, blc->hits);
-
-                if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
-                    dies("CACHE FLISH", "wrong write\n");
-                }
-            }
-
-            zdbfs_cache_block_free(cache);
-        }
+        zdbfs_cache_block_release(fs, cache);
 
         // FIXME: cache->inoid = 0;
         // FIXME: maybe invalidate/flush inode
     }
-
-    // zdbfs_cache_block_free(
 }
 
 void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
@@ -245,7 +350,6 @@ void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
     zdbfs_inode_free(cache->inode);
     zdbfs_cache_block_free(cache);
 
-    // zdbfs_inode_free(cache->inode);
     cache->inode = NULL;
 }
 
@@ -262,6 +366,9 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
     //
     // if entry were not touched for some time, flush it
     // in the backend
+    double now = zdbfs_cache_time_now();
+    double expired = now - 10.0;
+
     for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
         inocache_t *cache = &fs->inocache[i];
 
@@ -273,8 +380,8 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
         // check if last access time of that entry
         // were recent or not, if it was too recent, let's
         // keep as it in the cache
-        if(cache->access > time(NULL) - 10) {
-            // printf("[+] cache: hit too early: %ld seconds ago\n", time(NULL) - cache->access);
+        if(cache->atime > expired) {
+            // printf("[+] cache: hit too early: %f seconds ago\n", now - cache->atime);
             continue;
         }
 
@@ -317,20 +424,7 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
             flushed += 1;
         }
 
-        if(cache->blocks > 0) {
-            zdbfs_debug("[+] cache: blocks available, flushing\n");
-
-            for(size_t i = 0; i < cache->blocks; i++) {
-                blockcache_t *blc = cache->blcache[i];
-                uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
-
-                if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
-                    dies("CACHE FLISH", "wrong write\n");
-                }
-            }
-
-            zdbfs_cache_block_free(cache);
-        }
+        zdbfs_cache_block_release(fs, cache);
 
         // final unallocation
         zdbfs_inode_free(cache->inode);

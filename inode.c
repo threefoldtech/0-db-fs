@@ -571,7 +571,7 @@ uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t
     */
 
     if(!(inocache = zdbfs_cache_get(req, ino))) {
-        printf("store requested and inode not in cache, adding\n");
+        zdbfs_debug("[+] inode: write request for not cached inode, adding: %u\n", ino);
         zdbfs_cache_add(req, ino, inode);
     }
 
@@ -762,7 +762,7 @@ zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t
     if((cache = zdbfs_cache_get(req, ino))) {
         blockcache_t *blc;
 
-        if((blc = zdbfs_cache_block_get(cache, block))) {
+        if((blc = zdbfs_cache_block_get(req, cache, block))) {
             if(!(reply = malloc(sizeof(zdb_reply_t))))
                 diep("inode: block fetch: malloc");
 
@@ -815,7 +815,7 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
 
     blockcache_t *blc;
 
-    if(!(blc = zdbfs_cache_block_get(cache, block))) {
+    if(!(blc = zdbfs_cache_block_get(req, cache, block))) {
         zdbfs_debug("[+] block: store: add new block in cache\n");
 
         /*
@@ -832,9 +832,12 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
         cache->blocksize = 0;
         */
 
-        blc = zdbfs_cache_block_add(cache, block);
+        blc = zdbfs_cache_block_add(req, cache, block);
     }
 
+    // at this point, we are sure block is available
+    // - zdbfs_cache_block_add pushed a new one, fresh available
+    // - zdbfs_cache_block_get got an existing one, restored if offloaded
     zdbfs_debug("[+] block: store: update block cache content\n");
     zdbfs_cache_block_update(blc, buffer, buflen);
 
@@ -848,7 +851,7 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
         zdbfs_debug("[+] block: store: new blockid: %u\n", blockid);
     }
 
-    // request update blockslist at least to glow the
+    // request update blockslist at least to grow the
     // list if this id was not set yet, even if block
     // is in cache and not assigned yet
     zdbfs_inode_block_set(inode, block, blockid);

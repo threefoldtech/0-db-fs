@@ -71,10 +71,13 @@
 
     // inode cache entry
     typedef struct blockcache_t {
-        uint32_t blockidx;
-        char *data;
-        size_t blocksize;
-        size_t hits;
+        uint32_t blockidx;  // inode block index (not block id)
+        char *data;         // pointer to the buffer
+        size_t blocksize;   // size allocated in memory
+        size_t hits;        // number of hits (access)
+        int online;         // data available in memory
+        uint32_t offid;     // offline (temporary) id
+        double atime;       // last access time
 
     } blockcache_t;
 
@@ -82,10 +85,11 @@
         uint32_t inoid;         // inode number
         size_t ref;             // reference count
         zdb_inode_t *inode;     // pointer to the inode
-        time_t access;          // last access time
+        double atime;           // last access time
 
-        size_t blocks;
-        blockcache_t **blcache;
+        size_t blocks;          // amount of blocks in memory
+        size_t blonline;        // amount of blocks available in memory
+        blockcache_t **blcache; // cached blocks list
 
     } inocache_t;
 
