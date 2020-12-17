@@ -865,8 +865,9 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
 // be empty in a first set
 int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     zdb_reply_t *reply;
-    char *msg = "zdbfs version 0.1 debug header";
+    char *mmsg = "zdbfs version 0.1 debug header";
     char *bmsg = "zdbfs block namespace";
+    char *tmsg = "zdbfs temporary namespace";
     uint32_t expected = 0;
 
     zdbfs_debug("[+] filesystem: checking backend\n");
@@ -886,7 +887,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     redisReply *zreply;
 
     // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->metactx, "SET %b %s", NULL, 0, msg)))
+    if(!(zreply = redisCommand(fs->metactx, "SET %b %s", NULL, 0, mmsg)))
         diep("redis: set basic metadata");
 
     if(memcmp(zreply->str, &expected, zreply->len) != 0)
@@ -926,6 +927,25 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     expected = 0;
     if(memcmp(zreply->str, &expected, zreply->len) != 0)
         dies("could not create initial data message", zreply->str);
+
+    freeReplyObject(zreply);
+
+    //
+    // create initial temporary entry
+    //
+    if((reply = zdb_get(fs->tempctx, 0))) {
+        zdbfs_debug("[+] init: temp already contains a valid signature\n");
+        zdb_free(reply);
+        return 0;
+    }
+
+    // cannot use zdb_set because id 0 is special
+    if(!(zreply = redisCommand(fs->tempctx, "SET %b %s", NULL, 0, tmsg)))
+        diep("redis: set basic data");
+
+    expected = 0;
+    if(memcmp(zreply->str, &expected, zreply->len) != 0)
+        dies("could not create initial temp message", zreply->str);
 
     freeReplyObject(zreply);
 
