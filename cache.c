@@ -114,6 +114,11 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
     return 0;
 }
 
+static void zdbfs_cache_block_free_data(blockcache_t *block) {
+    free(block->data);
+    block->data = NULL;
+}
+
 void zdbfs_cache_block_free(inocache_t *cache) {
     for(size_t i = 0; i < cache->blocks; i++) {
         free(cache->blcache[i]->data);
@@ -303,6 +308,8 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
         if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
             dies("cache flush", "wrong write\n");
         }
+
+        zdbfs_cache_block_free_data(blc);
     }
 
     // free all blocks
