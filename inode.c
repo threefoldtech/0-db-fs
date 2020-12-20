@@ -12,6 +12,7 @@
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
 #include "zdbfs.h"
+#include "init.h"
 #include "zdb.h"
 #include "inode.h"
 #include "cache.h"
@@ -488,7 +489,7 @@ zdb_inode_t *zdbfs_inode_fetch_backend(fuse_req_t req, fuse_ino_t ino) {
     }
 
     zdb_inode_t *inode = zdbfs_inode_deserialize(reply->value, reply->length);
-    zdb_free(reply);
+    zdbfs_zdb_reply_free(reply);
 
     return inode;
 }
@@ -866,7 +867,7 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
 //
 // entry 1 will be the root directory of the system, which will
 // be empty in a first set
-int zdbfs_initialize_filesystem(zdbfs_t *fs) {
+int zdbfs_inode_init(zdbfs_t *fs) {
     zdb_reply_t *reply;
     char *mmsg = "zdbfs version 0.1 debug header";
     char *bmsg = "zdbfs block namespace";
@@ -879,7 +880,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     if((reply = zdb_get(fs->metactx, 0))) {
         if(strncmp((char *) reply->value, "zdbfs ", 6) == 0) {
             zdbfs_debug("[+] filesystem: metadata already contains a valid filesystem\n");
-            zdb_free(reply);
+            zdbfs_zdb_reply_free(reply);
             return 0;
         }
     }
@@ -904,7 +905,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     //
     if((reply = zdb_get(fs->metactx, 1))) {
         zdbfs_debug("[+] filesystem: metadata already contains a valid root directory\n");
-        zdb_free(reply);
+        zdbfs_zdb_reply_free(reply);
         return 0;
     }
 
@@ -919,7 +920,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     //
     if((reply = zdb_get(fs->datactx, 0))) {
         zdbfs_debug("[+] init: data already contains a valid signature\n");
-        zdb_free(reply);
+        zdbfs_zdb_reply_free(reply);
         return 0;
     }
 
@@ -938,7 +939,7 @@ int zdbfs_initialize_filesystem(zdbfs_t *fs) {
     //
     if((reply = zdb_get(fs->tempctx, 0))) {
         zdbfs_debug("[+] init: temp already contains a valid signature\n");
-        zdb_free(reply);
+        zdbfs_zdb_reply_free(reply);
         return 0;
     }
 

@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <float.h>
 #include "zdbfs.h"
+#include "init.h"
 #include "inode.h"
 #include "cache.h"
 #include "zdb.h"
@@ -79,6 +80,12 @@ static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cach
 
     zdbfs_lowdebug("[+] cache: delegate: moved temporarily: %u\n", oldest->offid);
 
+    //
+    // FIXME
+    //
+    // check for linear access time + full block size and send to real backend for that case
+    //
+
     // free block data and flag entry as offline
     free(oldest->data);
     oldest->data = NULL;
@@ -109,7 +116,7 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
     cache->blonline += 1;
 
     zdbfs_lowdebug("[+] cache: block offloaded restored, %lu bytes read\n", block->blocksize);
-    zdb_free(reply);
+    zdbfs_zdb_reply_free(reply);
 
     return 0;
 }

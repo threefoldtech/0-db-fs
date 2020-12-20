@@ -1,6 +1,8 @@
 #ifndef ZDBFS_INODE_H
     #define ZDBFS_INODE_H
 
+    int zdbfs_inode_init(zdbfs_t *fs);
+
     void zdbfs_inode_dump(zdb_inode_t *inode);
     size_t zdbfs_offset_to_block(off_t off);
     size_t zdbfs_inode_dir_size(zdb_dir_t *dir);
@@ -16,8 +18,6 @@
     zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry);
     buffer_t zdbfs_inode_serialize(zdb_inode_t *inode);
     void zdbfs_inode_free(zdb_inode_t *inode);
-
-    int zdbfs_initialize_filesystem(zdbfs_t *fs);
 
     zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode);
     zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir);

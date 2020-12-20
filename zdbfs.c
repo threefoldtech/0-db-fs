@@ -13,7 +13,9 @@
 #include <errno.h>
 #include <linux/fs.h>
 #include <sys/epoll.h>
+#include <stddef.h>
 #include "zdbfs.h"
+#include "init.h"
 #include "zdb.h"
 #include "inode.h"
 #include "cache.h"
@@ -416,7 +418,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
 
         if(reply->length < alignment) {
             zdbfs_debug("[+] read: try to read further than any data on this block\n");
-            zdb_free(reply);
+            zdbfs_zdb_reply_free(reply);
             break;
         }
 
@@ -435,7 +437,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         memcpy(buffer + fetched, reply->value + alignment, chunk);
 
         // cleaning block read
-        zdb_free(reply);
+        zdbfs_zdb_reply_free(reply);
 
         if(chunk == 0) {
             zdbfs_debug("[+] read: nothing more to read\n");
@@ -530,7 +532,7 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
                 // than our configured blocksize, we can't do anything
                 // with this, blocklist is not inline with backend
                 printf("[-] write: block read from backend larger than our blocksize\n");
-                zdb_free(reply);
+                zdbfs_zdb_reply_free(reply);
                 return zdbfs_fuse_error(req, EINVAL, ino);
             }
 
@@ -549,7 +551,7 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
             // buffer = fs->tmpblock;
 
             // FIXME
-            zdb_free(reply);
+            zdbfs_zdb_reply_free(reply);
         }
 
         zdbfs_debug("[+] write: writing %lu bytes (%lu / %lu, block: %u)\n", blocksize, sent, size, blockid);
@@ -924,8 +926,8 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     (void) ino;
     zdbfs_t *fs = fuse_req_userdata(req);
 
-    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->metactx, "zdbfs-meta");
-    zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, "zdbfs-data");
+    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->metactx, fs->opts->meta_ns);
+    zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, fs->opts->data_ns);
 
     // hardcode 10G for debug
     uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
@@ -1085,46 +1087,25 @@ static const struct fuse_lowlevel_ops zdbfs_fuse_oper = {
 int main(int argc, char *argv[]) {
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct fuse_session *se;
-    struct fuse_cmdline_opts opts;
-    struct fuse_loop_config config;
+    struct fuse_cmdline_opts fopts;
+    zdbfs_t zdbfs;
 
-    zdbfs_t zdbfs = {
-        .metactx = NULL,
-        .datactx = NULL,
-        .tempctx = NULL,
-        .caching = 1,
-    };
+    zdbfs_info("[+] initializing zdbfs v%s\n", ZDBFS_VERSION);
 
-
-
-    printf("[+] initializing zdb filesystem\n");
-    zdbfs_zdb_connect(&zdbfs);
-    zdbfs_initialize_filesystem(&zdbfs);
-
-    // initialize statistics to zero
-    memset(&zdbfs.stats, 0x00, sizeof(stats_t));
-
-    if(fuse_parse_cmdline(&args, &opts) != 0)
+    if(zdbfs_init_args(&zdbfs, &args, &fopts) != 0)
         return 1;
 
-    if(opts.show_help) {
-        printf("usage: %s [options] <mountpoint>\n\n", argv[0]);
-        fuse_cmdline_help();
-        fuse_lowlevel_help();
-        return 0;
-
-    } else if(opts.show_version) {
-        printf("FUSE library version %s\n", fuse_pkgversion());
-        fuse_lowlevel_version();
-        return 0;
-    }
-
-    if(opts.mountpoint == NULL) {
-        printf("usage: %s [options] <mountpoint>\n", argv[0]);
-        printf("       %s --help\n", argv[0]);
+    if(zdbfs_init_runtime(&zdbfs) != 0)
         return 1;
-    }
 
+    if(zdbfs_zdb_connect(&zdbfs) != 0)
+        return 1;
+
+    zdbfs_inode_init(&zdbfs);
+
+    //
+    // fuse initialization
+    //
     zdbfs_debug("[+] fuse: initializing session\n");
     if(!(se = fuse_session_new(&args, &zdbfs_fuse_oper, sizeof(zdbfs_fuse_oper), &zdbfs)))
         return 1;
@@ -1134,32 +1115,23 @@ int main(int argc, char *argv[]) {
         return 1;
 
     zdbfs_debug("[+] fuse: mounting session\n");
-    if(fuse_session_mount(se, opts.mountpoint) != 0)
+    if(fuse_session_mount(se, fopts.mountpoint) != 0)
         return 1;
 
     // fuse_daemonize(opts.foreground);
     // fuse_daemonize(0);
 
     // FIXME: cache handling
-    if(!(zdbfs.tmpblock = malloc(ZDBFS_BLOCK_SIZE)))
-        diep("cache: malloc: block");
-
-    if(!(zdbfs.inocache = (inocache_t *) calloc(sizeof(inocache_t), ZDBFS_INOCACHE_LENGTH)))
-        diep("cache: malloc: inocache");
-
-
-    if(zdbfs.caching == 0)
-        zdbfs_warning("[+] warning: cache disabled [%d]\n", zdbfs.caching);
-
-    // if(opts.singlethread)
-    zdbfs_success("[+] fuse: ready, waiting events: %s\n", opts.mountpoint);
+    //
+    // processing events
+    //
+    zdbfs_success("[+] fuse: ready, waiting events: %s\n", fopts.mountpoint);
     int ret = zdbfs_fuse_session_loop(se, &zdbfs, 1000);
-    (void) config;
+    // (void) config;
 
-    // config.clone_fd = opts.clone_fd;
-    // config.max_idle_threads = 10;
-    // int ret = fuse_session_loop_mt(se, &config);
-
+    //
+    // cleaning up
+    //
     printf("\n[+] fuse: stopping filesystem\n");
 
     printf("[+] cache: forcing cache flush\n");
@@ -1173,18 +1145,13 @@ int main(int argc, char *argv[]) {
     fuse_session_unmount(se);
     fuse_remove_signal_handlers(se);
     fuse_session_destroy(se);
-
-    free(opts.mountpoint);
     fuse_opt_free_args(&args);
 
-    // free block cache
-    free(zdbfs.tmpblock);
-    free(zdbfs.inocache);
+    // free blocks and inodes cache
+    zdbfs_init_free(&zdbfs, &fopts);
 
     // disconnect redis
-    redisFree(zdbfs.metactx);
-    redisFree(zdbfs.datactx);
-    redisFree(zdbfs.tempctx);
+    zdbfs_zdb_free(&zdbfs);
 
     return ret;
 }
