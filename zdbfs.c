@@ -96,14 +96,12 @@ void diep(char *str) {
 }
 
 // propagate an error to fuse with verbosity
-#define zdbfs_fuse_error(req, err, ino) zdbfs_fuse_error_caller(req, err, ino, __func__)
-
-void zdbfs_fuse_error_caller(fuse_req_t req, int err, uint32_t ino, const char *caller) {
+void zdbfs_fuse_error(fuse_req_t req, int err, uint32_t ino) {
 #ifdef RELEASE
     (void) ino;
     (void) caller;
 #endif
-    zdbfs_debug(COLOR_RED "[-] %s: ino %u: %s\n" COLOR_RESET, caller, ino, strerror(err));
+    zdbfs_debug("[/] syscall: error reply: ino %u: %s\n", ino, strerror(err));
     fuse_reply_err(req, err);
 }
 
