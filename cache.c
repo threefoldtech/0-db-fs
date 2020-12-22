@@ -46,7 +46,7 @@ double zdbfs_cache_time_now() {
 
 static blockcache_t *zdbfs_cache_block_first_online(inocache_t *cache) {
     for(size_t i = 0; i < cache->blocks; i++)
-        if(cache->blcache[i]->online == 1)
+        if(cache->blcache[i]->online == ZDBFS_BLOCK_ONLINE)
             return cache->blcache[i];
 
     return NULL;
@@ -59,7 +59,7 @@ static blockcache_t *zdbfs_cache_block_oldest_online(inocache_t *cache) {
     for(size_t i = 0; i < cache->blocks; i++) {
         blockcache_t *block = cache->blcache[i];
 
-        if(block->online == 1 && block->atime < oldest->atime)
+        if(block->online == ZDBFS_BLOCK_ONLINE && block->atime < oldest->atime)
             oldest = block;
     }
 
@@ -79,16 +79,10 @@ static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cach
 
     zdbfs_lowdebug("cache: delegate: moved temporarily: %u", oldest->offid);
 
-    //
-    // FIXME
-    //
-    // check for linear access time + full block size and send to real backend for that case
-    //
-
     // free block data and flag entry as offline
     free(oldest->data);
     oldest->data = NULL;
-    oldest->online = 0;
+    oldest->online = ZDBFS_BLOCK_OFFLINE;
 
     // reduce online cache size
     cache->blonline -= 1;
@@ -111,7 +105,7 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
 
     memcpy(block->data, reply->value, reply->length);
     block->blocksize = reply->length;
-    block->online = 1;
+    block->online = ZDBFS_BLOCK_ONLINE;
     cache->blonline += 1;
 
     zdbfs_lowdebug("cache: block offloaded restored, %lu bytes read", block->blocksize);
@@ -151,7 +145,7 @@ blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t 
             block->atime = zdbfs_cache_time_now();
 
             // restore offloaded block is not present online
-            if(block->online == 0)
+            if(block->online == ZDBFS_BLOCK_OFFLINE)
                 if(zdbfs_cache_block_restore(fs, cache, block))
                     return NULL;
 
@@ -188,7 +182,7 @@ blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t 
     block->data = NULL;
     block->blocksize = 0;
     block->hits = 0;
-    block->online = 1;
+    block->online = ZDBFS_BLOCK_ONLINE;
     block->offid = 0;
 
     // update cache hit time
@@ -303,7 +297,7 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
     for(size_t i = 0; i < cache->blocks; i++) {
         blockcache_t *blc = cache->blcache[i];
 
-        if(blc->online == 0)
+        if(blc->online == ZDBFS_BLOCK_OFFLINE)
             if(zdbfs_cache_block_restore(fs, cache, blc))
                 return;
 

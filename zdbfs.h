@@ -94,6 +94,9 @@
 
     } __attribute__((packed)) zdb_inode_t;
 
+    #define ZDBFS_BLOCK_OFFLINE   0
+    #define ZDBFS_BLOCK_ONLINE    1
+    #define ZDBFS_BLOCK_FLUSHED   2
 
     // inode cache entry
     typedef struct blockcache_t {
