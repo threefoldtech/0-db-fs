@@ -66,7 +66,7 @@ void zdbfs_inode_block_set(zdb_inode_t *inode, size_t block, uint32_t blockid) {
 
         // FIXME
         if(!(inode->extend[0] = realloc(blocks, newlength)))
-            diep("blocks: realloc");
+            zdbfs_sysfatal("blocks: realloc");
 
         // update blocks pointer
         blocks = inode->extend[0];
@@ -125,7 +125,7 @@ zdb_dir_t *zdbfs_dir_new(uint32_t parent) {
 
     // initialize an empty directory in memory
     if(!(dir = malloc(sizeof(zdb_dir_t))))
-        diep("dir: malloc");
+        zdbfs_sysfatal("inode: dir: new: malloc");
 
     // fill it with the 2 default entries
     dir->length = 0;
@@ -145,7 +145,7 @@ zdb_inode_t *zdbfs_inode_new_dir(uint32_t parent, uint32_t mode) {
 
     // create empty inode
     if(!(inode = calloc(sizeof(zdb_inode_t) + sizeof(zdb_dir_t *), 1)))
-        diep("mkdir: empty: calloc");
+        zdbfs_sysfatal("inode: newdir: calloc");
 
     // set inode and link directory to it
     inode->mode = S_IFDIR | mode;
@@ -172,7 +172,7 @@ zdb_inode_t *zdbfs_inode_deserialize_dir(zdb_inode_t *inode, uint8_t *buffer, si
     size_t dirlen = sizeof(zdb_dir_t) + (sizeof(zdb_direntry_t *) * dir->length);
 
     if(!(dir = malloc(dirlen)))
-        diep("deserialize: malloc dir");
+        zdbfs_sysfatal("inode: deserialize: dir: malloc");
 
     // link this directory contents to inode
     inode->extend[0] = dir;
@@ -196,7 +196,7 @@ zdb_inode_t *zdbfs_inode_deserialize_file(zdb_inode_t *inode, uint8_t *buffer, s
     zdb_blocks_t *blocks = (zdb_blocks_t *) (buffer + sizeof(zdb_inode_t));
 
     if(!(inode->extend[0] = malloc(length - sizeof(zdb_inode_t))))
-        diep("deserialize: file: malloc");
+        zdbfs_sysfatal("inode: deserialize: file: malloc");
 
     memcpy(inode->extend[0], blocks, length - sizeof(zdb_inode_t));
 
@@ -207,7 +207,7 @@ zdb_inode_t *zdbfs_inode_deserialize_symlink(zdb_inode_t *inode, uint8_t *buffer
     char *link = (char *) (buffer + sizeof(zdb_inode_t));
 
     if(!(inode->extend[0] = malloc(length - sizeof(zdb_inode_t))))
-        diep("deserialize: symlink: malloc");
+        zdbfs_sysfatal("inode: deserialize: symlink: malloc");
 
     memcpy(inode->extend[0], link, length - sizeof(zdb_inode_t));
 
@@ -222,7 +222,7 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
 
     // allocate inode struct plus one pointer for extend
     if(!(inode = malloc(sizeof(zdb_inode_t) + sizeof(void *))))
-        diep("deserialize: malloc inode");
+        zdbfs_sysfatal("inode: deserialize: inode: malloc");
 
     // copy inode from buffer to inode, as it
     memcpy(inode, buffer, sizeof(zdb_inode_t));
@@ -254,7 +254,7 @@ buffer_t zdbfs_inode_serialize_file(zdb_inode_t *inode) {
     size_t inolen = sizeof(zdb_inode_t) + blen;
 
     if(!(serial = malloc(inolen)))
-        diep("serialize: malloc");
+        zdbfs_sysfatal("inode: serialize: file: malloc");
 
     // FIXME debug
     memset(serial, 0x42, inolen);
@@ -280,7 +280,7 @@ buffer_t zdbfs_inode_serialize_symlink(zdb_inode_t *inode) {
     char *link = inode->extend[0];
 
     if(!(serial = calloc(inolen, 1)))
-        diep("serialize: malloc");
+        zdbfs_sysfatal("inode: serialize: symlink: malloc");
 
     // FIXME debug
     memset(serial, 0x42, inolen);
@@ -306,7 +306,7 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
     size_t inolen = zdbfs_inode_dir_size(dir);
 
     if(!(serial = malloc(inolen)))
-        diep("serialize: malloc");
+        zdbfs_sysfatal("inode: serialize: dir: malloc");
 
     // FIXME debug
     memset(serial, 0x42, inolen);
@@ -365,7 +365,7 @@ zdb_direntry_t *zdbfs_direntry_new(uint32_t ino, const char *name) {
     size_t namelen = strlen(name);
 
     if(!(entry = malloc(sizeof(zdb_direntry_t) + namelen + 1)))
-        diep("direntry: malloc");
+        zdbfs_sysfatal("inode: direntry: new: malloc");
 
     entry->ino = ino;
     entry->size = namelen;
@@ -379,7 +379,7 @@ zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
     size_t entlen = sizeof(zdb_direntry_t *) * dir->length;
 
     if(!(dir = realloc(dir, sizeof(zdb_dir_t) + entlen)))
-        diep("dir append: realloc");
+        zdbfs_sysfatal("inode: dir: append: realloc");
 
     dir->entries[dir->length - 1] = entry;
 
@@ -645,7 +645,7 @@ zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
     zdb_inode_t *create;
 
     if(!(create = calloc(sizeof(zdb_inode_t) + sizeof(zdb_blocks_t *), 1)))
-        diep("inode: new file: malloc");
+        zdbfs_sysfatal("inode: file: new: malloc");
 
     create->mode = S_IFREG | mode;
     create->ctime = time(NULL);
@@ -657,7 +657,7 @@ zdb_inode_t *zdbfs_inode_new_file(fuse_req_t req, uint32_t mode) {
     create->links = 1;
 
     if(!(create->extend[0] = calloc(sizeof(zdb_blocks_t), 1)))
-        diep("inode: new file: calloc");
+        zdbfs_sysfatal("inode: file: new: blocklist: calloc");
 
     return create;
 }
@@ -671,7 +671,7 @@ zdb_inode_t *zdbfs_inode_new_symlink(fuse_req_t req, const char *link) {
     zdb_inode_t *symlink;
 
     if(!(symlink = calloc(sizeof(zdb_inode_t) + sizeof(char *), 1)))
-        diep("inode: new file: calloc");
+        zdbfs_sysfatal("inode: symlink: new: calloc");
 
     symlink->mode = S_IFLNK | 0777;
     symlink->ctime = time(NULL);
@@ -684,7 +684,7 @@ zdb_inode_t *zdbfs_inode_new_symlink(fuse_req_t req, const char *link) {
 
     // copy link destination
     if(!(symlink->extend[0] = strdup(link)))
-        diep("inode: symlink: strdup");
+        zdbfs_sysfatal("inode: symlink: new: strdup");
 
     return symlink;
 }
@@ -765,13 +765,13 @@ zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t
 
         if((blc = zdbfs_cache_block_get(req, cache, block))) {
             if(!(reply = malloc(sizeof(zdb_reply_t))))
-                diep("inode: block fetch: malloc");
+                zdbfs_sysfatal("inode: block fetch: malloc");
 
             zdbfs_debug("[+] block: cache hit\n");
             reply->rreply = NULL;
 
             if(!(reply->value = malloc(blc->blocksize)))
-                diep("cache duplicate block malloc");
+                zdbfs_sysfatal("inode: cache duplicate block: malloc");
 
             memcpy(reply->value, blc->data, blc->blocksize);
             reply->length = blc->blocksize;
@@ -891,8 +891,10 @@ int zdbfs_inode_init(zdbfs_t *fs) {
     redisReply *zreply;
 
     // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->metactx, "SET %b %s", NULL, 0, mmsg)))
-        diep("redis: set basic metadata");
+    if(!(zreply = redisCommand(fs->metactx, "SET %b %s", NULL, 0, mmsg))) {
+        zdbfs_critical("inode: init: metadata: %s", fs->metactx->errstr);
+        return 1;
+    }
 
     if(memcmp(zreply->str, &expected, zreply->len) != 0)
         dies("could not create initial message", zreply->str);
@@ -925,8 +927,10 @@ int zdbfs_inode_init(zdbfs_t *fs) {
     }
 
     // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->datactx, "SET %b %s", NULL, 0, bmsg)))
-        diep("redis: set basic data");
+    if(!(zreply = redisCommand(fs->datactx, "SET %b %s", NULL, 0, bmsg))) {
+        zdbfs_critical("zdb: init: datablock: %s", fs->metactx->errstr);
+        return 1;
+    }
 
     expected = 0;
     if(memcmp(zreply->str, &expected, zreply->len) != 0)
@@ -944,8 +948,10 @@ int zdbfs_inode_init(zdbfs_t *fs) {
     }
 
     // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->tempctx, "SET %b %s", NULL, 0, tmsg)))
-        diep("redis: set basic data");
+    if(!(zreply = redisCommand(fs->tempctx, "SET %b %s", NULL, 0, tmsg))) {
+        zdbfs_critical("zdb: init: temporary: %s", fs->metactx->errstr);
+        return 1;
+    }
 
     expected = 0;
     if(memcmp(zreply->str, &expected, zreply->len) != 0)

@@ -3,12 +3,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <ctype.h>
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
-#include <time.h>
 #include <sys/time.h>
 #include <float.h>
+#include <errno.h>
 #include "zdbfs.h"
 #include "init.h"
 #include "inode.h"
@@ -108,7 +107,7 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
     }
 
     if(!(block->data = malloc(reply->length)))
-        diep("cache: block: restore: malloc");
+        zdbfs_sysfatal("cache: block: restore: malloc");
 
     memcpy(block->data, reply->value, reply->length);
     block->blocksize = reply->length;
@@ -178,10 +177,10 @@ blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t 
     cache->blonline += 1;
 
     if(!(cache->blcache = realloc(cache->blcache, sizeof(blockcache_t **) * cache->blocks)))
-        diep("cache: blocks: realloc");
+        zdbfs_sysfatal("cache: blocks: realloc");
 
     if(!(cache->blcache[cache->blocks - 1] = malloc(sizeof(blockcache_t))))
-        diep("cache: block: malloc");
+        zdbfs_sysfatal("cache: block: malloc");
 
     blockcache_t *block = cache->blcache[cache->blocks - 1];
 
@@ -205,7 +204,7 @@ blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, si
         free(cache->data);
 
         if(!(cache->data = malloc(blocksize)))
-            diep("cache: block update: mallo");
+            zdbfs_sysfatal("cache: block update: malloc");
     }
 
     memcpy(cache->data, data, blocksize);

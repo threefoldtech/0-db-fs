@@ -90,11 +90,6 @@ void dies(char *help, char *value) {
     exit(EXIT_FAILURE);
 }
 
-void diep(char *str) {
-    perror(str);
-    exit(EXIT_FAILURE);
-}
-
 // propagate an error to fuse with verbosity
 void zdbfs_fuse_error(fuse_req_t req, int err, uint32_t ino) {
 #ifdef RELEASE
@@ -298,7 +293,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 
     // allocate buffer large enough
     if(!(buffer.buffer = calloc(buffer.length, 1)))
-        diep("readdir: calloc");
+        zdbfs_sysfatal("readdir: calloc");
 
     // fill in the buffer for each entries
     struct stat stbuf;
@@ -381,7 +376,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
     // zdbfs_inode_dump(inode);
 
     if(!(buffer = calloc(size, 1)))
-        diep("read: malloc buffer");
+        zdbfs_sysfatal("read: buffer: malloc");
 
     // for each block to read
     while(fetched < size) {
@@ -995,17 +990,17 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
 
     // initialize epoll with fuse file descriptor
     if((evfd = epoll_create1(0)) < 0)
-        diep("epoll_create1");
+        zdbfs_sysfatal("fuse: loop: epoll_create1");
 
     event.data.fd = ffd;
     event.events = EPOLLIN;
 
     // only watch for read event
     if(epoll_ctl(evfd, EPOLL_CTL_ADD, ffd, &event) < 0)
-        diep("epoll_ctl");
+        zdbfs_sysfatal("fuse: loop: epoll_ctl");
 
     if(!(events = calloc(ZDBFS_EPOLL_MAXEVENTS, sizeof event)))
-        diep("event: calloc");
+        zdbfs_sysfatal("fuse: loop: events: calloc");
 
     //
     // main fuse loop (single threaded)

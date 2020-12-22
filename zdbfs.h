@@ -180,5 +180,4 @@
     } zdb_reply_t;
 
     void dies(char *help, char *value);
-    void diep(char *str);
 #endif

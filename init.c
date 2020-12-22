@@ -7,6 +7,7 @@
 #include <fuse_lowlevel.h>
 #include <stddef.h>
 #include <hiredis/hiredis.h>
+#include <errno.h>
 #include "zdbfs.h"
 #include "init.h"
 
@@ -40,7 +41,7 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     memset(fs, 0, sizeof(zdbfs_t));
 
     if(!(fs->opts = calloc(sizeof(zdbfs_options), 1)))
-        diep("init: opts: calloc");
+        zdbfs_sysfatal("init: opts: calloc");
 
     fs->opts->nocache = -1;
 
@@ -95,10 +96,10 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
 
     // initialize cache
     if(!(fs->tmpblock = malloc(ZDBFS_BLOCK_SIZE)))
-        diep("cache: malloc: block");
+        zdbfs_sysfatal("cache: malloc: block");
 
     if(!(fs->inocache = (inocache_t *) calloc(sizeof(inocache_t), ZDBFS_INOCACHE_LENGTH)))
-        diep("cache: malloc: inocache");
+        zdbfs_sysfatal("cache: malloc: inocache");
 
     // check cache status
     if(fs->caching == 0)
