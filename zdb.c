@@ -17,7 +17,7 @@
 #include "zdb.h"
 #include "inode.h"
 
-static int zdb_select(redisContext *remote, char *namespace, char *password) {
+int zdb_select(redisContext *remote, char *namespace, char *password) {
     redisReply *reply;
 
     zdbfs_debug("[+] zdb: select: request namespace: %s\n", namespace);
@@ -70,58 +70,7 @@ zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
     return nsinfo;
 }
 
-int zdbfs_zdb_connect(zdbfs_t *fs) {
-    //
-    // metadata
-    //
-    zdbfs_debug("[+] zdb: connecting metadata zdb [%s, %d]\n", fs->opts->meta_host, fs->opts->meta_port);
 
-    if(!(fs->metactx = redisConnect(fs->opts->meta_host, fs->opts->meta_port)))
-        diep("zdb: init");
-
-    if(fs->metactx->err) {
-        fprintf(stderr, "[-] zdb: metadata: %s/%d: %s\n", fs->opts->meta_host, fs->opts->meta_port, fs->metactx->errstr);
-        return 1;
-    }
-
-    //
-    // data
-    //
-    zdbfs_debug("[+] zdb: connecting datablock zdb [%s, %d]\n", fs->opts->data_host, fs->opts->data_port);
-    if(!(fs->datactx = redisConnect(fs->opts->data_host, fs->opts->data_port)))
-        diep("zdb: init");
-
-    if(fs->datactx->err) {
-        fprintf(stderr, "[-] zdb: datablock: %s/%d: %s\n", fs->opts->data_host, fs->opts->data_port, fs->datactx->errstr);
-        return 1;
-    }
-
-    //
-    // temporary blocks
-    //
-    zdbfs_debug("[+] zdb: connecting temporary zdb [%s, %d]\n", fs->opts->temp_host, fs->opts->temp_port);
-    if(!(fs->tempctx = redisConnect(fs->opts->temp_host, fs->opts->temp_port)))
-        diep("zdb: init");
-
-    if(fs->tempctx->err) {
-        fprintf(stderr, "[-] zdb: temporary: %s/%d: %s\n", fs->opts->temp_host, fs->opts->temp_port, fs->tempctx->errstr);
-        return 1;
-    }
-
-    //
-    // select namespaces
-    //
-    if(zdb_select(fs->metactx, fs->opts->meta_ns, fs->opts->meta_pass))
-        return 1;
-
-    if(zdb_select(fs->datactx, fs->opts->data_ns, fs->opts->data_pass))
-        return 1;
-
-    if(zdb_select(fs->tempctx, fs->opts->temp_ns, fs->opts->temp_pass))
-        return 1;
-
-    return 0;
-}
 
 zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
     zdb_reply_t *reply;
@@ -216,6 +165,59 @@ int zdb_del(redisContext *remote, uint32_t id) {
     }
 
     freeReplyObject(reply);
+
+    return 0;
+}
+
+int zdbfs_zdb_connect(zdbfs_t *fs) {
+    //
+    // metadata
+    //
+    zdbfs_debug("[+] zdb: connecting metadata zdb [%s, %d]\n", fs->opts->meta_host, fs->opts->meta_port);
+
+    if(!(fs->metactx = redisConnect(fs->opts->meta_host, fs->opts->meta_port)))
+        diep("zdb: init");
+
+    if(fs->metactx->err) {
+        fprintf(stderr, "[-] zdb: metadata: %s/%d: %s\n", fs->opts->meta_host, fs->opts->meta_port, fs->metactx->errstr);
+        return 1;
+    }
+
+    //
+    // data
+    //
+    zdbfs_debug("[+] zdb: connecting datablock zdb [%s, %d]\n", fs->opts->data_host, fs->opts->data_port);
+    if(!(fs->datactx = redisConnect(fs->opts->data_host, fs->opts->data_port)))
+        diep("zdb: init");
+
+    if(fs->datactx->err) {
+        fprintf(stderr, "[-] zdb: datablock: %s/%d: %s\n", fs->opts->data_host, fs->opts->data_port, fs->datactx->errstr);
+        return 1;
+    }
+
+    //
+    // temporary blocks
+    //
+    zdbfs_debug("[+] zdb: connecting temporary zdb [%s, %d]\n", fs->opts->temp_host, fs->opts->temp_port);
+    if(!(fs->tempctx = redisConnect(fs->opts->temp_host, fs->opts->temp_port)))
+        diep("zdb: init");
+
+    if(fs->tempctx->err) {
+        fprintf(stderr, "[-] zdb: temporary: %s/%d: %s\n", fs->opts->temp_host, fs->opts->temp_port, fs->tempctx->errstr);
+        return 1;
+    }
+
+    //
+    // select namespaces
+    //
+    if(zdb_select(fs->metactx, fs->opts->meta_ns, fs->opts->meta_pass))
+        return 1;
+
+    if(zdb_select(fs->datactx, fs->opts->data_ns, fs->opts->data_pass))
+        return 1;
+
+    if(zdb_select(fs->tempctx, fs->opts->temp_ns, fs->opts->temp_pass))
+        return 1;
 
     return 0;
 }
