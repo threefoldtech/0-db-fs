@@ -66,8 +66,68 @@ static blockcache_t *zdbfs_cache_block_oldest_online(inocache_t *cache) {
     return oldest;
 }
 
+static int zdbfs_cache_block_linear(inocache_t *cache) {
+    double ptime = 0;
+
+    // iterate over all blocks (except last one) ordered
+    // and check if block is full and time increased
+    for(size_t i = 0; i < cache->blocks - 1; i++) {
+        blockcache_t *block = cache->blcache[i];
+
+        // skip already offline blocks
+        if(block->online == ZDBFS_BLOCK_OFFLINE)
+            continue;
+
+        // block not full
+        if(block->blocksize != ZDBFS_BLOCK_SIZE)
+            return 0;
+
+        // not time linear
+        if(block->online == ZDBFS_BLOCK_ONLINE && block->atime < ptime)
+            return 0;
+
+        ptime = block->atime;
+    }
+
+    return 1;
+}
+
 static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cache) {
     zdbfs_t *fs = fuse_req_userdata(req);
+
+    //
+    // delegate requested, this call is made when cache is full
+    // we proceed in two steps:
+    //
+    // first we check if current state are linears write only
+    // in which situation we can directly flush into the backend, we hope that behind
+    // it's a regular linear file write and we won't need to update an already written
+    // block
+    //
+    // otherwise, caller is probably doing random write
+    // in order to keep backend not growing up too quickly, we will cache blocks which
+    // will be updated later, but without sending it to the datablock namespace already,
+    // to avoid lot of changes and growup the namespace for no reason
+    //
+    // we first put that block into the temporary namespace, keep it's id and then flag
+    // that block as offline (aka in temporary location), this will free up some blocks
+    // in memory
+
+    //
+    // check for linear writes
+    //
+    if(zdbfs_cache_block_linear(cache)) {
+        zdbfs_lowdebug("cache: ino: %u, block linear detected, flushing", cache->inoid);
+        // TODO
+        //
+    } else {
+        zdbfs_lowdebug("cache: ino: %u, NON LINEAR BLOCKS DETECTED, flushing", cache->inoid);
+        // usleep(1000000);
+    }
+
+    //
+    // free non-recently hit blocks
+    //
 
     // looking for oldest (smaller last access time) online block entry
     blockcache_t *oldest = zdbfs_cache_block_oldest_online(cache);
