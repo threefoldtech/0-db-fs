@@ -99,7 +99,6 @@ void diep(char *str) {
 void zdbfs_fuse_error(fuse_req_t req, int err, uint32_t ino) {
 #ifdef RELEASE
     (void) ino;
-    (void) caller;
 #endif
     zdbfs_debug("[/] syscall: error reply: ino %u: %s\n", ino, strerror(err));
     fuse_reply_err(req, err);
@@ -1126,7 +1125,6 @@ int main(int argc, char *argv[]) {
     // fuse_daemonize(opts.foreground);
     // fuse_daemonize(0);
 
-    // FIXME: cache handling
     //
     // processing events
     //
