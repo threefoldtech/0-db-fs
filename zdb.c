@@ -18,21 +18,21 @@
 #include "inode.h"
 
 int zdb_select(redisContext *remote, char *namespace, char *password) {
+    const char *argv[] = {"SELECT", namespace, password};
+    int argc = (password) ? 3 : 2;
     redisReply *reply;
 
-    zdbfs_debug("[+] zdb: select: request namespace: %s\n", namespace);
+    zdbfs_debug("[+] zdb: select: namespace: %s (pwd: %s)\n", namespace, password ? "yes" : "no");
 
-    if(password) {
-        if(!(reply = redisCommand(remote, "SELECT %s %s", namespace, password)))
-            diep(namespace);
-
-    } else {
-        if(!(reply = redisCommand(remote, "SELECT %s", namespace)))
-            diep(namespace);
+    if(!(reply = redisCommandArgv(remote, argc, argv, NULL))) {
+        zdbfs_critical("zdb: select: %s: %s", namespace, remote->errstr);
+        return 1;
     }
 
-    if(strcmp(reply->str, "OK") != 0)
-        dies("zdb: metadata: namespace", reply->str);
+    if(strcmp(reply->str, "OK") != 0) {
+        zdbfs_error("zdb: select: %s: %s", namespace, reply->str);
+        return 1;
+    }
 
     freeReplyObject(reply);
 
@@ -51,16 +51,20 @@ static size_t zdb_nsinfo_sizeval(char *buffer, char *entry) {
 }
 
 zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
+    const char *argv[] = {"NSINFO", namespace};
     zdb_nsinfo_t *nsinfo;
     redisReply *reply;
 
     if(!(nsinfo = calloc(sizeof(zdb_nsinfo_t), 1)))
-        diep("zdb: nsinfo: calloc");
+        zdbfs_sysfatal("zdb: nsinfo: calloc");
 
     zdbfs_debug("[+] zdb: nsinfo: request namespace: %s\n", namespace);
 
-    if(!(reply = redisCommand(remote, "NSINFO %s", namespace)))
-        diep(namespace);
+    if(!(reply = redisCommandArgv(remote, 2, argv, NULL))) {
+        zdbfs_critical("zdb: nsinfo: %s: %s", namespace, remote->errstr);
+        free(nsinfo);
+        return NULL;
+    }
 
     nsinfo->entries = zdb_nsinfo_sizeval(reply->str, "entries");
     nsinfo->datasize = zdb_nsinfo_sizeval(reply->str, "data_size_bytes");
@@ -70,21 +74,25 @@ zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
     return nsinfo;
 }
 
-
-
 zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
+    char *rid = (char *) &id;
+    const char *argv[] = {"GET", rid};
+    size_t argvl[] = {3, sizeof(id)};
     zdb_reply_t *reply;
 
     zdbfs_debug("[+] zdb: get: request id: %u\n", id);
 
     if(!(reply = calloc(sizeof(zdb_reply_t), 1)))
-        diep("zdb: get: malloc");
+        zdbfs_sysfatal("zdb: get: malloc");
 
-    if(!(reply->rreply = redisCommand(remote, "GET %b", &id, sizeof(id))))
-        diep("zdb: get");
+    if(!(reply->rreply = redisCommandArgv(remote, 2, argv, argvl))) {
+        zdbfs_critical("zdb: get: id %d: %s", id, remote->errstr);
+        free(reply);
+        return NULL;
+    }
 
     if(reply->rreply->type == REDIS_REPLY_ERROR) {
-        zdbfs_debug("[-] zdb: get: error: %s\n", reply->rreply->str);
+        zdbfs_error("zdb: get: error: %s", reply->rreply->str);
         freeReplyObject(reply->rreply);
         free(reply);
         return NULL;
@@ -122,11 +130,13 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     const char *argv[] = {"SET", (char *) rid, buffer};
     size_t argvl[] = {3, rsize, length};
 
-    if(!(reply = redisCommandArgv(remote, 3, argv, argvl)))
-        diep("zdb: set");
+    if(!(reply = redisCommandArgv(remote, 3, argv, argvl))) {
+        zdbfs_critical("zdb: set: id %d: %s", id, remote->errstr);
+        return 0;
+    }
 
     if(reply->type == REDIS_REPLY_ERROR) {
-        zdbfs_debug("[-] zdb: set: error: %s\n", reply->str);
+        zdbfs_error("zdb: set: error: %s", reply->str);
         freeReplyObject(reply);
         return 0;
     }
@@ -151,15 +161,20 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
 }
 
 int zdb_del(redisContext *remote, uint32_t id) {
+    char *rid = (char *) &id;
+    const char *argv[] = {"DEL", rid};
+    size_t argvl[] = {3, sizeof(id)};
     redisReply *reply;
 
     zdbfs_debug("[+] zdb: del: request id: %u\n", id);
 
-    if(!(reply = redisCommand(remote, "DEL %b", &id, sizeof(id))))
-        diep("zdb: del");
+    if(!(reply = redisCommandArgv(remote, 2, argv, argvl))) {
+        zdbfs_critical("zdb: del: id %d: %s", id, remote->errstr);
+        return 1;
+    }
 
     if(reply->type == REDIS_REPLY_ERROR) {
-        zdbfs_debug("[-] zdb: del: error: %s\n", reply->str);
+        zdbfs_error("[-] zdb: del: error: %s\n", reply->str);
         freeReplyObject(reply);
         return 1;
     }
@@ -176,10 +191,10 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     zdbfs_debug("[+] zdb: connecting metadata zdb [%s, %d]\n", fs->opts->meta_host, fs->opts->meta_port);
 
     if(!(fs->metactx = redisConnect(fs->opts->meta_host, fs->opts->meta_port)))
-        diep("zdb: init");
+        zdbfs_sysfatal("zdb: connect: metadata");
 
     if(fs->metactx->err) {
-        fprintf(stderr, "[-] zdb: metadata: %s/%d: %s\n", fs->opts->meta_host, fs->opts->meta_port, fs->metactx->errstr);
+        zdbfs_critical("zdb: metadata: [%s:%d]: %s", fs->opts->meta_host, fs->opts->meta_port, fs->metactx->errstr);
         return 1;
     }
 
@@ -188,10 +203,10 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     zdbfs_debug("[+] zdb: connecting datablock zdb [%s, %d]\n", fs->opts->data_host, fs->opts->data_port);
     if(!(fs->datactx = redisConnect(fs->opts->data_host, fs->opts->data_port)))
-        diep("zdb: init");
+        zdbfs_sysfatal("zdb: connect: datablock");
 
     if(fs->datactx->err) {
-        fprintf(stderr, "[-] zdb: datablock: %s/%d: %s\n", fs->opts->data_host, fs->opts->data_port, fs->datactx->errstr);
+        zdbfs_critical("zdb: datablock: [%s:%d]: %s", fs->opts->data_host, fs->opts->data_port, fs->datactx->errstr);
         return 1;
     }
 
@@ -200,10 +215,10 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     zdbfs_debug("[+] zdb: connecting temporary zdb [%s, %d]\n", fs->opts->temp_host, fs->opts->temp_port);
     if(!(fs->tempctx = redisConnect(fs->opts->temp_host, fs->opts->temp_port)))
-        diep("zdb: init");
+        zdbfs_sysfatal("zdb: connect: temporary");
 
     if(fs->tempctx->err) {
-        fprintf(stderr, "[-] zdb: temporary: %s/%d: %s\n", fs->opts->temp_host, fs->opts->temp_port, fs->tempctx->errstr);
+        zdbfs_critical("zdb: temporary: [%s/%d]: %s", fs->opts->temp_host, fs->opts->temp_port, fs->tempctx->errstr);
         return 1;
     }
 

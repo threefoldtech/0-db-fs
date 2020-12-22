@@ -925,11 +925,16 @@ static void zdbfs_fuse_fsyncdir(fuse_req_t req, fuse_ino_t ino, int datasync, st
 static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     (void) ino;
     zdbfs_t *fs = fuse_req_userdata(req);
+    zdb_nsinfo_t *metadata;
+    zdb_nsinfo_t *data;
 
     zdbfs_syscall("statfs", "ino: %lu", ino);
 
-    zdb_nsinfo_t *metadata = zdb_nsinfo(fs->metactx, fs->opts->meta_ns);
-    zdb_nsinfo_t *data = zdb_nsinfo(fs->datactx, fs->opts->data_ns);
+    if(!(metadata = zdb_nsinfo(fs->metactx, fs->opts->meta_ns)))
+        return zdbfs_fuse_error(req, EIO, ino);
+
+    if(!(data = zdb_nsinfo(fs->datactx, fs->opts->data_ns)))
+        return zdbfs_fuse_error(req, EIO, ino);
 
     // hardcode 10G for debug
     uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
