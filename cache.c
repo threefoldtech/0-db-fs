@@ -33,6 +33,14 @@ static void zdbfs_cache_stats_full(zdbfs_t *fs) {
     fs->stats.cache_full += 1;
 }
 
+static void zdbfs_cache_stats_linear_flush(zdbfs_t *fs) {
+    fs->stats.cache_linear_flush += 1;
+}
+
+static void zdbfs_cache_stats_random_flush(zdbfs_t *fs) {
+    fs->stats.cache_random_flush += 1;
+}
+
 //
 // block cache system
 //
@@ -42,6 +50,23 @@ double zdbfs_cache_time_now() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     return tv.tv_sec + (tv.tv_usec / 1000000.0);
+}
+
+static void zdbfs_cache_block_free_data(blockcache_t *block) {
+    free(block->data);
+    block->data = NULL;
+}
+
+void zdbfs_cache_block_free(inocache_t *cache) {
+    for(size_t i = 0; i < cache->blocks; i++) {
+        free(cache->blcache[i]->data);
+        free(cache->blcache[i]);
+    }
+
+    free(cache->blcache);
+    cache->blocks = 0;
+    cache->blonline = 0;
+    cache->blcache = NULL;
 }
 
 static blockcache_t *zdbfs_cache_block_first_online(inocache_t *cache) {
@@ -68,14 +93,29 @@ static blockcache_t *zdbfs_cache_block_oldest_online(inocache_t *cache) {
 
 static int zdbfs_cache_block_linear(inocache_t *cache) {
     double ptime = 0;
+    uint32_t next = 0;
 
     // iterate over all blocks (except last one) ordered
     // and check if block is full and time increased
+    //
+    // FIXME: does this logic is good enough ?
     for(size_t i = 0; i < cache->blocks - 1; i++) {
         blockcache_t *block = cache->blcache[i];
 
-        // skip already offline blocks
+        // checking for incremented value
+        // this disable linear feature for holes
+        if(next != block->blockidx)
+            return 0;
+
+        next += 1;
+
+        // if any blocks are offloaded, this is not
+        // a linear write for sure
         if(block->online == ZDBFS_BLOCK_OFFLINE)
+            return 0;
+
+        // skip already flushed blocks
+        if(block->online != ZDBFS_BLOCK_FLUSHED)
             continue;
 
         // block not full
@@ -83,7 +123,7 @@ static int zdbfs_cache_block_linear(inocache_t *cache) {
             return 0;
 
         // not time linear
-        if(block->online == ZDBFS_BLOCK_ONLINE && block->atime < ptime)
+        if(block->atime < ptime)
             return 0;
 
         ptime = block->atime;
@@ -92,7 +132,37 @@ static int zdbfs_cache_block_linear(inocache_t *cache) {
     return 1;
 }
 
-static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cache) {
+// assume that blocks are linear ordered confirmed
+static int zdbfs_cache_block_linear_flush(zdbfs_t *fs, inocache_t *cache) {
+    int flushed = 0;
+
+    for(size_t i = 0; i < cache->blocks - 1; i++) {
+        blockcache_t *block = cache->blcache[i];
+
+        // skip blocks not online
+        if(block->online != ZDBFS_BLOCK_ONLINE)
+            continue;
+
+        uint32_t blockid = zdbfs_inode_block_get(cache->inode, block->blockidx);
+
+        if(zdb_set(fs->datactx, blockid, block->data, block->blocksize) != blockid) {
+            dies("cache linear delegate", "wrong write\n");
+        }
+
+        zdbfs_lowdebug("cache: delegate: flushed datablock: %u", blockid);
+
+        // free block data and flag entry as flushed
+        // (offline but not in temporary namespace)
+        zdbfs_cache_block_free_data(block);
+        block->online = ZDBFS_BLOCK_FLUSHED;
+
+        flushed += 1;
+    }
+
+    return flushed;
+}
+
+static int zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cache) {
     zdbfs_t *fs = fuse_req_userdata(req);
 
     //
@@ -118,16 +188,21 @@ static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cach
     //
     if(zdbfs_cache_block_linear(cache)) {
         zdbfs_lowdebug("cache: ino: %u, block linear detected, flushing", cache->inoid);
-        // TODO
-        //
-    } else {
-        zdbfs_lowdebug("cache: ino: %u, NON LINEAR BLOCKS DETECTED, flushing", cache->inoid);
-        // usleep(1000000);
+
+        int flushed = zdbfs_cache_block_linear_flush(fs, cache);
+        zdbfs_cache_stats_linear_flush(fs);
+
+        cache->blonline -= flushed;
+        zdbfs_lowdebug("cache: flushed: %d", flushed);
+
+        return flushed;
     }
 
     //
     // free non-recently hit blocks
     //
+    zdbfs_lowdebug("cache: ino: %u, non-linear blocks detected, flushing", cache->inoid);
+    zdbfs_cache_stats_random_flush(fs);
 
     // looking for oldest (smaller last access time) online block entry
     blockcache_t *oldest = zdbfs_cache_block_oldest_online(cache);
@@ -140,16 +215,17 @@ static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cach
     zdbfs_lowdebug("cache: delegate: moved temporarily: %u", oldest->offid);
 
     // free block data and flag entry as offline
-    free(oldest->data);
-    oldest->data = NULL;
+    zdbfs_cache_block_free_data(oldest);
     oldest->online = ZDBFS_BLOCK_OFFLINE;
 
     // reduce online cache size
     cache->blonline -= 1;
 
-    return oldest;
+    return 1;
 }
 
+// take a block from temporary namespace and restore it
+// in cache
 static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_t *block) {
     zdb_reply_t *reply = NULL;
 
@@ -174,21 +250,32 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
     return 0;
 }
 
-static void zdbfs_cache_block_free_data(blockcache_t *block) {
-    free(block->data);
-    block->data = NULL;
-}
+// take a block flushed to datablock namespace and restore it
+// in cache, this should not happen if linear flush works correctly
+// and usage is good
+static int zdbfs_cache_block_fetch(zdbfs_t *fs, inocache_t *cache, blockcache_t *block) {
+    zdb_reply_t *reply = NULL;
+    uint32_t blockid = zdbfs_inode_block_get(cache->inode, block->blockidx);
 
-void zdbfs_cache_block_free(inocache_t *cache) {
-    for(size_t i = 0; i < cache->blocks; i++) {
-        free(cache->blcache[i]->data);
-        free(cache->blcache[i]);
+    zdbfs_lowdebug("cache: block flushed, fetching it back: %u", blockid);
+
+    if(!(reply = zdb_get(fs->datactx, blockid))) {
+        zdbfs_debug("[-] cache: datablock: %u: not found\n", blockid);
+        return 1;
     }
 
-    free(cache->blcache);
-    cache->blocks = 0;
-    cache->blonline = 0;
-    cache->blcache = NULL;
+    if(!(block->data = malloc(reply->length)))
+        zdbfs_sysfatal("cache: block: fetch: malloc");
+
+    memcpy(block->data, reply->value, reply->length);
+    block->blocksize = reply->length;
+    block->online = ZDBFS_BLOCK_ONLINE;
+    cache->blonline += 1;
+
+    zdbfs_lowdebug("cache: block flushed restored, %lu bytes read", block->blocksize);
+    zdbfs_zdb_reply_free(reply);
+
+    return 0;
 }
 
 blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t blockidx) {
@@ -204,9 +291,15 @@ blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t 
             block->hits += 1;
             block->atime = zdbfs_cache_time_now();
 
-            // restore offloaded block is not present online
+            // restore offloaded block if not present online
             if(block->online == ZDBFS_BLOCK_OFFLINE)
                 if(zdbfs_cache_block_restore(fs, cache, block))
+                    return NULL;
+
+            // restore flushed block if not present online
+            // this should not happen on real linear write
+            if(block->online == ZDBFS_BLOCK_FLUSHED)
+                if(zdbfs_cache_block_fetch(fs, cache, block))
                     return NULL;
 
             return block;
@@ -360,6 +453,11 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
         if(blc->online == ZDBFS_BLOCK_OFFLINE)
             if(zdbfs_cache_block_restore(fs, cache, blc))
                 return;
+
+        if(blc->online == ZDBFS_BLOCK_FLUSHED) {
+            zdbfs_lowdebug("cache: release: block already flushed: %u", blc->blockidx);
+            continue;
+        }
 
         uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
 
@@ -522,9 +620,11 @@ static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
 }
 
 void zdbfs_cache_stats(zdbfs_t *fs) {
-    zdbfs_lowdebug("cache: total hit : %lu", fs->stats.cache_hit);
-    zdbfs_lowdebug("cache: total miss: %lu", fs->stats.cache_miss);
-    zdbfs_lowdebug("cache: total full: %lu", fs->stats.cache_full);
+    zdbfs_lowdebug("cache: total hit   : %lu", fs->stats.cache_hit);
+    zdbfs_lowdebug("cache: total miss  : %lu", fs->stats.cache_miss);
+    zdbfs_lowdebug("cache: total full  : %lu", fs->stats.cache_full);
+    zdbfs_lowdebug("cache: linear flush: %lu", fs->stats.cache_linear_flush);
+    zdbfs_lowdebug("cache: random flush: %lu", fs->stats.cache_random_flush);
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))

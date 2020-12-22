@@ -174,7 +174,7 @@ int zdb_del(redisContext *remote, uint32_t id) {
     }
 
     if(reply->type == REDIS_REPLY_ERROR) {
-        zdbfs_error("[-] zdb: del: error: %s\n", reply->str);
+        zdbfs_error("zdb: del: error: %s", reply->str);
         freeReplyObject(reply);
         return 1;
     }

@@ -128,6 +128,8 @@
         size_t cache_hit;
         size_t cache_miss;
         size_t cache_full;
+        size_t cache_linear_flush;
+        size_t cache_random_flush;
 
     } stats_t;
 
