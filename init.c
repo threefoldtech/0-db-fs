@@ -102,7 +102,7 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
 
     // check cache status
     if(fs->caching == 0)
-        zdbfs_warning("[+] warning: cache disabled [%d]\n", fs->caching);
+        zdbfs_warning("warning: cache disabled [%d]", fs->caching);
 
     return 0;
 }

@@ -12,25 +12,45 @@
     #define COLOR_CYAN   "\033[36;1m"
     #define COLOR_RESET  "\033[0m"
 
+    // define noop keyword
+    #define __disabled   ((void) 0)
+
+    // define colors helpers
+    #define grey(x)      COLOR_GREY   x COLOR_RESET "\n"
+    #define red(x)       COLOR_RED    x COLOR_RESET "\n"
+    #define green(x)     COLOR_GREEN  x COLOR_RESET "\n"
+    #define yellow(x)    COLOR_YELLOW x COLOR_RESET "\n"
+    #define blue         COLOR_BLUE   x COLOR_RESET "\n"
+    #define purple       COLOR_PURPLE x COLOR_RESET "\n"
+    #define cyan(x)      COLOR_CYAN   x COLOR_RESET "\n"
+
     #ifndef RELEASE
-        #define zdbfs_info(fmt, ...) { printf(COLOR_CYAN fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_syscall(fmt, ...) { printf(COLOR_PURPLE fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_warning(fmt, ...) { printf(COLOR_YELLOW fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_lowdebug(fmt, ...) { printf(COLOR_GREY fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
-        #define zdbfs_debug(...) { printf(__VA_ARGS__); }
+        #define zdbfs_syscall(name, fmt, ...)  { printf(COLOR_PURPLE "[x] syscall: " name ": " fmt COLOR_RESET "\n", __VA_ARGS__); }
+
+        #define zdbfs_info(fmt, ...)     { printf(  cyan("[+] " fmt), __VA_ARGS__); }
+        #define zdbfs_error(fmt, ...)    { printf(   red("[-] " fmt), __VA_ARGS__); }
+        #define zdbfs_success(fmt, ...)  { printf( green("[+] " fmt), __VA_ARGS__); }
+        #define zdbfs_warning(fmt, ...)  { printf(yellow("[!] " fmt), __VA_ARGS__); }
+        #define zdbfs_lowdebug(fmt, ...) { printf(  grey("[.] " fmt), __VA_ARGS__); }
+        #define zdbfs_verbose(...)       { printf(__VA_ARGS__); }
+        #define zdbfs_debug(...)         { printf(__VA_ARGS__); }
+        #define zdbfs_critical(fmt, ...) { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); }
+        #define zdbfs_fatal(fmt, ...)    { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); exit(EXIT_FAILURE); }
+        #define zdbfs_sysfatal(fmt)      { fprintf(stderr, red("[-] " fmt)); fprintf(stderr, ": %s\n", strerror(errno)); exit(EXIT_FAILURE); }
     #else
-        #define zdbfs_info(fmt, ...) { printf(COLOR_CYAN fmt COLOR_RESET, __VA_ARGS__); }
         // #define zdbfs_syscall(...) { printf(__VA_ARGS__); }
-        #define zdbfs_syscall(...) ((void)0)
-        #define zdbfs_error(fmt, ...) { printf(COLOR_RED fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_success(fmt, ...) { printf(COLOR_GREEN fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_warning(fmt, ...) { printf(COLOR_YELLOW fmt COLOR_RESET, __VA_ARGS__); }
-        #define zdbfs_verbose(...) { printf(__VA_ARGS__); }
-        #define zdbfs_debug(...) ((void)0)
-        #define zdbfs_lowdebug(...) ((void)0)
+        #define zdbfs_syscall(...) ((void) 0)
+
+        #define zdbfs_info(fmt, ...)     { printf(  cyan("[+] " fmt), __VA_ARGS__); }
+        #define zdbfs_error(fmt, ...)    { printf(   red("[-] " fmt), __VA_ARGS__); }
+        #define zdbfs_success(fmt, ...)  { printf( green("[+] " fmt), __VA_ARGS__); }
+        #define zdbfs_warning(fmt, ...)  { printf(yellow("[!] " fmt), __VA_ARGS__); }
+        #define zdbfs_lowdebug(...)      __disabled
+        #define zdbfs_verbose(...)       { printf(__VA_ARGS__); }
+        #define zdbfs_debug(...)         __disabled
+        #define zdbfs_critical(fmt, ...) { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); }
+        #define zdbfs_fatal(fmt, ...)    { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); exit(EXIT_FAILURE); }
+        #define zdbfs_sysfatal(fmt)      { fprintf(stderr, red("[-] " fmt)); fprintf(stderr, ": %s\n", strerror(errno)); exit(EXIT_FAILURE); }
     #endif
 
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)    // 128k

@@ -25,6 +25,7 @@ static int zdb_select(redisContext *remote, char *namespace, char *password) {
     if(password) {
         if(!(reply = redisCommand(remote, "SELECT %s %s", namespace, password)))
             diep(namespace);
+
     } else {
         if(!(reply = redisCommand(remote, "SELECT %s", namespace)))
             diep(namespace);

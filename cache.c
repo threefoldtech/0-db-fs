@@ -78,7 +78,7 @@ static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cach
         dies("cache delegate", "wrong write\n");
     }
 
-    zdbfs_lowdebug("[+] cache: delegate: moved temporarily: %u\n", oldest->offid);
+    zdbfs_lowdebug("cache: delegate: moved temporarily: %u", oldest->offid);
 
     //
     // FIXME
@@ -100,7 +100,7 @@ static blockcache_t *zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cach
 static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_t *block) {
     zdb_reply_t *reply = NULL;
 
-    zdbfs_lowdebug("[-] cache: block offloaded, fetching it back: %u\n", block->offid);
+    zdbfs_lowdebug("cache: block offloaded, fetching it back: %u", block->offid);
 
     if(!(reply = zdb_get(fs->tempctx, block->offid))) {
         zdbfs_debug("[-] cache: temporary: %u: not found\n", block->offid);
@@ -115,7 +115,7 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
     block->online = 1;
     cache->blonline += 1;
 
-    zdbfs_lowdebug("[+] cache: block offloaded restored, %lu bytes read\n", block->blocksize);
+    zdbfs_lowdebug("cache: block offloaded restored, %lu bytes read", block->blocksize);
     zdbfs_zdb_reply_free(reply);
 
     return 0;
@@ -170,7 +170,7 @@ void zdbfs_cache_block_hit(blockcache_t *block) {
 
 blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t blockidx) {
     if(cache->blonline + 1 > ZDBFS_BLOCKS_CACHE_LIMIT) {
-        zdbfs_lowdebug("[-] cache: too many blocks online [%lu], offloading\n", cache->blonline);
+        zdbfs_lowdebug("cache: too many blocks online [%lu], offloading", cache->blonline);
         zdbfs_cache_block_delegate(req, cache);
     }
 
@@ -227,13 +227,13 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
     if(!zdbfs_cache_enabled(fs))
         return NULL;
 
-    zdbfs_lowdebug("[+] cache: lookup inode: %u\n", ino);
+    zdbfs_lowdebug("cache: lookup inode: %u", ino);
 
     for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
         inocache_t *cache = &fs->inocache[i];
 
         if(cache->inoid == ino) {
-            zdbfs_lowdebug("[+] cache: hit inode: %u\n", ino);
+            zdbfs_lowdebug("cache: hit inode: %u", ino);
 
             // if we access this entry and it was
             // flagged as available previously, we
@@ -248,7 +248,7 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
         }
     }
 
-    zdbfs_lowdebug("[-] cache: miss inode: %u\n", ino);
+    zdbfs_lowdebug("cache: miss inode: %u", ino);
     zdbfs_cache_stats_miss(fs);
 
     return NULL;
@@ -276,7 +276,7 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
             zdbfs_inode_free(cache->inode);
             zdbfs_cache_block_free(cache);
 
-            zdbfs_lowdebug("[+] cache: add inode: %u\n", ino);
+            zdbfs_lowdebug("cache: add inode: %u", ino);
             cache->inoid = ino;
             cache->ref = 1;
             cache->inode = inode;
@@ -288,7 +288,7 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
     }
 
     // no more space available
-    zdbfs_lowdebug("[-] cache: cache full (inode %u)\n", ino);
+    zdbfs_lowdebug("cache: cache full (inode %u)", ino);
     zdbfs_cache_stats_full(fs);
     // zdbfs_cache_dump(req);
 
@@ -310,7 +310,7 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
 
         uint32_t blockid = zdbfs_inode_block_get(cache->inode, blc->blockidx);
 
-        zdbfs_lowdebug("[+] cache: release: flushing block %lu [hits %lu]\n", i, blc->hits);
+        zdbfs_lowdebug("cache: release: flushing block %lu [hits %lu]", i, blc->hits);
 
         if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
             dies("cache flush", "wrong write\n");
@@ -330,13 +330,13 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
     if(!zdbfs_cache_enabled(fs))
         return;
 
-    zdbfs_lowdebug("[+] cache: release inode: %u\n", cache->inoid);
+    zdbfs_lowdebug("cache: release inode: %u", cache->inoid);
 
     if(cache->ref > 0)
         cache->ref -= 1;
 
     if(cache->ref == 0) {
-        zdbfs_lowdebug("[+] cache: inode not linked anymore: %u, flushing\n", cache->inoid);
+        zdbfs_lowdebug("cache: inode not linked anymore: %u, flushing", cache->inoid);
 
         if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
             dies("cache release", "could not write to backend\n");
@@ -356,7 +356,7 @@ void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
     if(!zdbfs_cache_enabled(fs))
         return;
 
-    zdbfs_lowdebug("[+] cache: drop inode: %u\n", cache->inoid);
+    zdbfs_lowdebug("cache: drop inode: %u", cache->inoid);
 
     cache->ref = 0;
     cache->inoid = 0;
@@ -399,7 +399,7 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
             continue;
         }
 
-        zdbfs_lowdebug("[+] cache: inode cache expired: %u, flushing\n", cache->inoid);
+        zdbfs_lowdebug("cache: inode cache expired: %u, flushing", cache->inoid);
 
         if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
             dies("cache", "could not write inode in the backend\n");
@@ -427,7 +427,7 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
         inocache_t *cache = &fs->inocache[i];
 
         if(cache->ref > 0) {
-            zdbfs_lowdebug("[+] cache: forcing inode flush: %u\n", cache->inoid);
+            zdbfs_lowdebug("cache: forcing inode flush: %u", cache->inoid);
 
             // flush still referenced cache entries
             if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
@@ -469,14 +469,14 @@ static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
 }
 
 void zdbfs_cache_stats(zdbfs_t *fs) {
-    zdbfs_lowdebug("[+] cache: total hit : %lu\n", fs->stats.cache_hit);
-    zdbfs_lowdebug("[+] cache: total miss: %lu\n", fs->stats.cache_miss);
-    zdbfs_lowdebug("[+] cache: total full: %lu\n", fs->stats.cache_full);
+    zdbfs_lowdebug("cache: total hit : %lu", fs->stats.cache_hit);
+    zdbfs_lowdebug("cache: total miss: %lu", fs->stats.cache_miss);
+    zdbfs_lowdebug("cache: total full: %lu", fs->stats.cache_full);
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
         return;
 
-    zdbfs_lowdebug("[+] cache: current entries: %lu\n", zdbfs_cache_stats_entries(fs));
-    zdbfs_lowdebug("[+] cache: current blocksize: %lu bytes\n", zdbfs_cache_stats_blocksize(fs));
+    zdbfs_lowdebug("cache: current entries: %lu", zdbfs_cache_stats_entries(fs));
+    zdbfs_lowdebug("cache: current blocksize: %lu bytes", zdbfs_cache_stats_blocksize(fs));
 }
