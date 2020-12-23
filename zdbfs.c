@@ -744,6 +744,7 @@ static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char
     volino zdb_inode_t *directory = NULL;
     volino zdb_inode_t *existing = NULL;
     uint32_t sourceino = 0;
+    int linkinfo;
 
     zdbfs_syscall("rename", "%lu, name: %s -> name: %s", parent, name, newname);
 
@@ -771,7 +772,12 @@ static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char
         if(flags & RENAME_NOREPLACE)
             return zdbfs_fuse_error(req, EEXIST, target->ino);
 
-        zdbfs_inode_unlink(req, existing, target->ino);
+        if((linkinfo = zdbfs_inode_unlink(req, existing, target->ino)) == 1)
+            return zdbfs_fuse_error(req, EIO, entry->ino);
+
+        // reset file pointer if dropped
+        if(linkinfo == 0)
+            existing = NULL; // avoid volino double free
 
         // remove target from directory
         zdbfs_inode_remove_entry(directory, newname);
@@ -1138,8 +1144,8 @@ int main(int argc, char *argv[]) {
     size_t flushed = zdbfs_cache_clean(&zdbfs);
     printf("[+] cache: flushed, %lu entries written\n", flushed);
 
-    zdbfs_cache_stats(&zdbfs);
     zdbfs_stats_dump(&zdbfs);
+    zdbfs_cache_stats(&zdbfs);
 
     zdbfs_debug("[+] fuse: cleaning environment\n");
     fuse_session_unmount(se);

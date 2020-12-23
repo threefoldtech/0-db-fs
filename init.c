@@ -98,8 +98,16 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
     if(!(fs->tmpblock = malloc(ZDBFS_BLOCK_SIZE)))
         zdbfs_sysfatal("cache: malloc: block");
 
-    if(!(fs->inocache = (inocache_t *) calloc(sizeof(inocache_t), ZDBFS_INOCACHE_LENGTH)))
-        zdbfs_sysfatal("cache: malloc: inocache");
+    // initialize cache root branches
+    if(!(fs->inoroot = (inoroot_t *) calloc(sizeof(inoroot_t), 1)))
+        zdbfs_sysfatal("init: inoroot: calloc");
+
+    // set amount of branches defined
+    fs->inoroot->length = ZDBFS_INOROOT_BRANCHES;
+
+    // pre-allocate empty branches
+    if(!(fs->inoroot->branches = (inobranch_t *) calloc(sizeof(inobranch_t), fs->inoroot->length)))
+        zdbfs_sysfatal("init: inobranches: malloc");
 
     // check cache status
     if(fs->caching == 0)
@@ -112,7 +120,12 @@ int zdbfs_init_free(zdbfs_t *fs, struct fuse_cmdline_opts *fopts) {
     free(fopts->mountpoint);
 
     free(fs->tmpblock);
-    free(fs->inocache);
+
+    for(size_t i = 0; i < fs->inoroot->length; i++)
+        free(fs->inoroot->branches[i].inocache);
+
+    free(fs->inoroot->branches);
+    free(fs->inoroot);
 
     free(fs->opts->meta_host);
     free(fs->opts->meta_ns);

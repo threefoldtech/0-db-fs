@@ -424,7 +424,8 @@ zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
     dir = zdbfs_dir_resize(dir, dir->length + 1);
 
     // compute index where to insert (ordered) entry
-    int index = zdbfs_inode_dir_append_index(dir, dir->length - 1, entry->name);
+    ssize_t index = zdbfs_inode_dir_append_index(dir, dir->length - 1, entry->name);
+    zdbfs_debug("[+] inode: dir: append: new index: %ld\n", index);
 
     // compute how much we need to shift
     size_t length = (dir->length - index - 1) * sizeof(zdb_direntry_t *);
@@ -781,10 +782,13 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
             return 1;
 
         // invalidate cache if any
-        if((cache = zdbfs_cache_get(req, ino)))
+        if((cache = zdbfs_cache_get(req, ino))) {
             zdbfs_cache_drop(req, cache);
-
-        return 0;
+            // returns zero if cache cleaned
+            // this mean inode shound not be freed
+            // a second time later
+            return 0;
+        }
 
     } else {
         // save updated links
@@ -792,6 +796,8 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
             return 1;
     }
 
+    // link updated and metadata stored correctly
+    // nothing more to do
     return 2;
 }
 

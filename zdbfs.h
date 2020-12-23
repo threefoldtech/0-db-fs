@@ -57,7 +57,7 @@
     #define ZDBFS_BLOCKS_CACHE_LIMIT  32             // 512 * 128k (64M)
 
     #define ZDBFS_KERNEL_CACHE_TIME   5.0
-    #define ZDBFS_INOCACHE_LENGTH     4095
+    #define ZDBFS_INOCACHE_LENGTH     4096
     #define ZDBFS_EPOLL_MAXEVENTS     64
 
     typedef struct zdb_blocks_t {
@@ -110,6 +110,7 @@
 
     } blockcache_t;
 
+
     typedef struct inocache_t {
         uint32_t inoid;         // inode number
         size_t ref;             // reference count
@@ -121,6 +122,24 @@
         blockcache_t **blcache; // cached blocks list
 
     } inocache_t;
+
+    #define ZDBFS_INOROOT_BRANCHES    1024
+
+    // inocache cache link, one per branch
+    // (see below)
+    typedef struct inobranch_t {
+        inocache_t **inocache;
+        size_t length;
+
+    } inobranch_t;
+
+    // root cache link, will contains 'branches' used to
+    // indirect cache list (like hash table)
+    typedef struct inoroot_t {
+        inobranch_t *branches;
+        size_t length;
+
+    } inoroot_t;
 
     typedef struct stats_t {
         size_t fuse_reqs;
@@ -158,7 +177,7 @@
         redisContext *datactx;    // block data redis context
         redisContext *tempctx;    // temporary redis context
 
-        inocache_t *inocache;     // root inode cache link
+        inoroot_t *inoroot;       // root inode cache link
 
         // write block reusable buffer allocated a single time
         // to hold temporary buffer for read/write changes

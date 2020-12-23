@@ -364,8 +364,53 @@ blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, si
 }
 
 //
-// cache system
+// inode cache system
 //
+
+// get dedicated branch based on inode id
+// which is just a selection based on inode id modulo and branch id
+static inobranch_t *zdbfs_cache_branch_get(zdbfs_t *fs, uint32_t ino) {
+    int inomod = ino % ZDBFS_INOROOT_BRANCHES;
+    return &fs->inoroot->branches[inomod];
+}
+
+// grow or shrink a branch, clean branch if empty
+static inobranch_t *zdbfs_cache_branch_resize(inobranch_t *branch, size_t length) {
+    branch->length = length;
+
+    if(!(branch->inocache = realloc(branch->inocache, sizeof(inocache_t *) * branch->length))) {
+        // avoid false-error if null returned and length is zero
+        if(branch->length > 0)
+            zdbfs_sysfatal("cache: branch: resize: realloc");
+    }
+
+    return branch;
+}
+
+// append an inocache entry to a branch
+// (this branch needs to be resize first)
+static void zdbfs_cache_branch_push(inobranch_t *branch, inocache_t *cache) {
+    branch->inocache[branch->length - 1] = cache;
+}
+
+// remove a cache entry from a branch
+// the cache entry itself is not freed, only branch is updated
+static void zdbfs_cache_branch_pop(inobranch_t *branch, inocache_t *cache) {
+    for(size_t i = 0; i < branch->length; i++) {
+        if(branch->inocache[i] == cache) {
+            zdbfs_lowdebug("cache: pop: swap and clean: %u", cache->inoid);
+
+            // swap last entry with current entry
+            branch->inocache[i] = branch->inocache[branch->length - 1];
+
+            // shrink array (will drop last entry, just swapped)
+            zdbfs_cache_branch_resize(branch, branch->length - 1);
+
+            return;
+        }
+    }
+}
+
 inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
 
@@ -375,8 +420,10 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
 
     zdbfs_lowdebug("cache: lookup inode: %u", ino);
 
-    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
-        inocache_t *cache = &fs->inocache[i];
+    inobranch_t *branch = zdbfs_cache_branch_get(fs, ino);
+
+    for(size_t i = 0; i < branch->length; i++) {
+        inocache_t *cache = branch->inocache[i];
 
         if(cache->inoid == ino) {
             zdbfs_lowdebug("cache: hit inode: %u", ino);
@@ -390,7 +437,7 @@ inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino) {
             cache->atime = zdbfs_cache_time_now();
             zdbfs_cache_stats_hit(fs);
 
-            return &fs->inocache[i];
+            return cache;
         }
     }
 
@@ -413,32 +460,34 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
     if((cache = zdbfs_cache_get(req, ino)))
         return cache;
 
-    // pick up the first empty spot
-    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
-        inocache_t *cache = &fs->inocache[i];
+    inobranch_t *branch = zdbfs_cache_branch_get(fs, ino);
+    zdbfs_cache_branch_resize(branch, branch->length + 1);
 
-        if(cache->inoid == 0 || cache->ref == 0) {
-            // free any previous entry
-            zdbfs_inode_free(cache->inode);
-            zdbfs_cache_block_free(cache);
+    if(!(cache = calloc(sizeof(inocache_t), 1)))
+        zdbfs_sysfatal("cache: add: calloc");
 
-            zdbfs_lowdebug("cache: add inode: %u", ino);
-            cache->inoid = ino;
-            cache->ref = 1;
-            cache->inode = inode;
-            cache->atime = zdbfs_cache_time_now();
-            cache->inode->ino = 1; // FIXME: cache flag
+    // push the new entry to the end of the branch
+    zdbfs_cache_branch_push(branch, cache);
 
-            return &fs->inocache[i];
-        }
-    }
+    // set entry data
+    zdbfs_lowdebug("cache: add inode: %u", ino);
+    cache->inoid = ino;
+    cache->ref = 1;
+    cache->inode = inode;
+    cache->atime = zdbfs_cache_time_now();
+    cache->inode->ino = 1; // FIXME: cache flag
 
+    return cache;
+
+#if 0
+    // FIXME: handle cache full
     // no more space available
     zdbfs_lowdebug("cache: cache full (inode %u)", ino);
     zdbfs_cache_stats_full(fs);
     // zdbfs_cache_dump(req);
 
     return NULL;
+#endif
 }
 
 static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
@@ -474,6 +523,24 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
     zdbfs_cache_block_free(cache);
 }
 
+void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    // runtime cache disabled
+    if(!zdbfs_cache_enabled(fs))
+        return;
+
+    zdbfs_lowdebug("cache: drop inode: %u", cache->inoid);
+
+    inobranch_t *branch = zdbfs_cache_branch_get(fs, cache->inoid);
+
+    zdbfs_inode_free(cache->inode);
+    zdbfs_cache_block_free(cache);
+    free(cache);
+
+    zdbfs_cache_branch_pop(branch, cache);
+}
+
 void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
     zdbfs_t *fs = fuse_req_userdata(req);
 
@@ -494,28 +561,9 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
         }
 
         zdbfs_cache_block_release(fs, cache);
-
-        // FIXME: cache->inoid = 0;
-        // FIXME: maybe invalidate/flush inode
+        // zdbfs_cache_drop(req, cache);
+        // FIXME ^ better memory usage but slower
     }
-}
-
-void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
-    zdbfs_t *fs = fuse_req_userdata(req);
-
-    // runtime cache disabled
-    if(!zdbfs_cache_enabled(fs))
-        return;
-
-    zdbfs_lowdebug("cache: drop inode: %u", cache->inoid);
-
-    cache->ref = 0;
-    cache->inoid = 0;
-
-    zdbfs_inode_free(cache->inode);
-    zdbfs_cache_block_free(cache);
-
-    cache->inode = NULL;
 }
 
 size_t zdbfs_cache_sync(zdbfs_t *fs) {
@@ -525,7 +573,6 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
     if(!zdbfs_cache_enabled(fs))
         return 0;
 
-
     // checking each cache entries and check
     // if entry were added few time ago or more
     //
@@ -534,33 +581,37 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
     double now = zdbfs_cache_time_now();
     double expired = now - 10.0;
 
-    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
-        inocache_t *cache = &fs->inocache[i];
+    for(size_t b = 0; b < fs->inoroot->length; b++) {
+        inobranch_t *branch = zdbfs_cache_branch_get(fs, b);
 
-        // check if cache entry is currently in use
-        // or waiting to be replaced
-        if(cache->ref == 0)
-            continue;
+        for(size_t i = 0; i < branch->length; i++) {
+            inocache_t *cache = branch->inocache[i];
 
-        // check if last access time of that entry
-        // were recent or not, if it was too recent, let's
-        // keep as it in the cache
-        if(cache->atime > expired) {
-            // printf("[+] cache: hit too early: %f seconds ago\n", now - cache->atime);
-            continue;
+            // check if cache entry is currently in use
+            // or waiting to be replaced
+            if(cache->ref == 0)
+                continue;
+
+            // check if last access time of that entry
+            // were recent or not, if it was too recent, let's
+            // keep as it in the cache
+            if(cache->atime > expired) {
+                // printf("[+] cache: hit too early: %f seconds ago\n", now - cache->atime);
+                continue;
+            }
+
+            zdbfs_lowdebug("cache: inode cache expired: %u, flushing", cache->inoid);
+
+            if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
+                dies("cache", "could not write inode in the backend\n");
+            }
+
+            // count how many entries were flushed
+            cleared += 1;
+
+            // flag entry as re-usable
+            cache->ref = 0;
         }
-
-        zdbfs_lowdebug("cache: inode cache expired: %u, flushing", cache->inoid);
-
-        if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
-            dies("cache", "could not write inode in the backend\n");
-        }
-
-        // count how many entries were flushed
-        cleared += 1;
-
-        // flag entry as re-usable
-        cache->ref = 0;
     }
 
     return cleared;
@@ -573,26 +624,35 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
     if(!zdbfs_cache_enabled(fs))
         return 0;
 
-    // clean and unallocate all entries
-    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++) {
-        inocache_t *cache = &fs->inocache[i];
+    // clean and unallocate each branches
+    for(size_t b = 0; b < fs->inoroot->length; b++) {
+        inobranch_t *branch = zdbfs_cache_branch_get(fs, b);
 
-        if(cache->ref > 0) {
-            zdbfs_lowdebug("cache: forcing inode flush: %u", cache->inoid);
+        // uncallocate each entries
+        for(size_t i = 0; i < branch->length; i++) {
+            inocache_t *cache = branch->inocache[i];
 
-            // flush still referenced cache entries
-            if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
-                dies("cache", "could not write inode in the backend\n");
+            if(cache->ref > 0) {
+                zdbfs_lowdebug("cache: forcing inode flush: %u", cache->inoid);
+
+                // flush still referenced cache entries
+                if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
+                    dies("cache", "could not write inode in the backend\n");
+                }
+
+                // count how many entries were flushed
+                flushed += 1;
             }
 
-            // count how many entries were flushed
-            flushed += 1;
+            zdbfs_cache_block_release(fs, cache);
+
+            // final unallocation
+            zdbfs_inode_free(cache->inode);
+            free(cache);
         }
 
-        zdbfs_cache_block_release(fs, cache);
-
-        // final unallocation
-        zdbfs_inode_free(cache->inode);
+        // cleanup branch
+        zdbfs_cache_branch_resize(branch, 0);
     }
 
     return flushed;
@@ -601,9 +661,14 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
 static size_t zdbfs_cache_stats_entries(zdbfs_t *fs) {
     size_t entries = 0;
 
-    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++)
-        if(fs->inocache[i].ref > 0)
-            entries += 1;
+    for(size_t b = 0; b < fs->inoroot->length; b++) {
+        inobranch_t *branch = zdbfs_cache_branch_get(fs, b);
+
+        for(size_t i = 0; i < branch->length; i++) {
+            if(branch->inocache[i]->ref > 0)
+                entries += 1;
+        }
+    }
 
     return entries;
 }
@@ -611,10 +676,14 @@ static size_t zdbfs_cache_stats_entries(zdbfs_t *fs) {
 static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
     size_t size = 0;
 
-    for(size_t i = 0; i < ZDBFS_INOCACHE_LENGTH; i++)
-        if(fs->inocache[i].blocks > 0)
-            for(size_t j = 0; j < fs->inocache[i].blocks; j++)
-                size += fs->inocache[i].blcache[j]->blocksize;
+    for(size_t b = 0; b < fs->inoroot->length; b++) {
+        inobranch_t *branch = zdbfs_cache_branch_get(fs, b);
+
+        for(size_t i = 0; i < branch->length; i++)
+            if(branch->inocache[i]->blocks > 0)
+                for(size_t j = 0; j < branch->inocache[i]->blocks; j++)
+                    size += branch->inocache[i]->blcache[j]->blocksize;
+    }
 
     return size;
 }
@@ -630,6 +699,6 @@ void zdbfs_cache_stats(zdbfs_t *fs) {
     if(!zdbfs_cache_enabled(fs))
         return;
 
-    zdbfs_lowdebug("cache: current entries: %lu", zdbfs_cache_stats_entries(fs));
-    zdbfs_lowdebug("cache: current blocksize: %lu bytes", zdbfs_cache_stats_blocksize(fs));
+    zdbfs_lowdebug("cache: entries     : %lu", zdbfs_cache_stats_entries(fs));
+    zdbfs_lowdebug("cache: blocksize   : %lu bytes", zdbfs_cache_stats_blocksize(fs));
 }
