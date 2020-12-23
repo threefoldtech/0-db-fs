@@ -60,6 +60,22 @@ ts=hello            temporary namespace password (mandatory)
 nocache             disable runtime cache (for debug purpose)
 ```
 
+# Quick Setup
+
+To get `zdbfs` to work out-of-box using a local 0-db (in sequential mode), prepare required namespaces:
+
+```
+cat <<< EOF | redis-cli -p 9900
+NSNEW zdbfs-meta
+NSNEW zdbfs-data
+NSNEW zdbfs-temp
+NSSET zdbfs-temp password hello
+NSSET zdbfs-temp public 0
+EOF
+```
+
+You can now run `./zdbfs /mnt/zdbfs` to mount the filesystem on `/mnt/zdbfs` target.
+
 # Performance
 
 Using 0-db on a basic SSD, 100 MB/s linear write can be achieved easily.
