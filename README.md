@@ -65,7 +65,7 @@ nocache             disable runtime cache (for debug purpose)
 To get `zdbfs` to work out-of-box using a local 0-db (in sequential mode), prepare required namespaces:
 
 ```
-cat <<< EOF | redis-cli -p 9900
+cat << EOF | redis-cli -p 9900
 NSNEW zdbfs-meta
 NSNEW zdbfs-data
 NSNEW zdbfs-temp
