@@ -685,7 +685,7 @@ static void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     // reset file pointer if dropped
     if(linkinfo == 0)
-        file = NULL;
+        file = NULL; // avoid volino double free
 
     // remove file from directory list
     if(zdbfs_inode_remove_entry(inode, name) != 0)
