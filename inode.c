@@ -573,7 +573,11 @@ uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t
 
     if(!(inocache = zdbfs_cache_get(req, ino))) {
         zdbfs_debug("[+] inode: write request for not cached inode, adding: %u\n", ino);
-        zdbfs_cache_add(req, ino, inode);
+        if(!zdbfs_cache_add(req, ino, inode)) {
+            // cache full, force metadata push
+            zdbfs_debug("[+] inode: metadata: store: cache not available, flushing\n");
+            return zdbfs_inode_store_backend(fs->metactx, inode, ino);
+        }
     }
 
 
