@@ -36,7 +36,7 @@
         #define zdbfs_debug(...)         { printf(__VA_ARGS__); }
         #define zdbfs_critical(fmt, ...) { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); }
         #define zdbfs_fatal(fmt, ...)    { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); exit(EXIT_FAILURE); }
-        #define zdbfs_sysfatal(fmt)      { fprintf(stderr, red("[-] " fmt)); fprintf(stderr, ": %s\n", strerror(errno)); exit(EXIT_FAILURE); }
+        #define zdbfs_sysfatal(fmt)      { fprintf(stderr, red("[-] " fmt ": %s"), strerror(errno)); exit(EXIT_FAILURE); }
     #else
         // #define zdbfs_syscall(...) { printf(__VA_ARGS__); }
         #define zdbfs_syscall(...) ((void) 0)
@@ -50,7 +50,7 @@
         #define zdbfs_debug(...)         __disabled
         #define zdbfs_critical(fmt, ...) { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); }
         #define zdbfs_fatal(fmt, ...)    { fprintf(stderr, red("[-] " fmt), __VA_ARGS__); exit(EXIT_FAILURE); }
-        #define zdbfs_sysfatal(fmt)      { fprintf(stderr, red("[-] " fmt)); fprintf(stderr, ": %s\n", strerror(errno)); exit(EXIT_FAILURE); }
+        #define zdbfs_sysfatal(fmt)      { fprintf(stderr, red("[-] " fmt ": %s"), strerror(errno)); exit(EXIT_FAILURE); }
     #endif
 
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)    // 128k
