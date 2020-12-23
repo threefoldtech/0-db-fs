@@ -93,10 +93,6 @@ uint32_t zdbfs_inode_block_get(zdb_inode_t *inode, size_t block) {
 }
 
 size_t zdbfs_direntry_size(zdb_direntry_t *entry) {
-    // deleted entry
-    if(entry->size == 0)
-        return 0;
-
     return sizeof(zdb_direntry_t) + entry->size + 1;
 }
 
@@ -108,6 +104,17 @@ size_t zdbfs_inode_dir_size(zdb_dir_t *dir) {
         length += zdbfs_direntry_size(dir->entries[i]);
 
     return length;
+}
+
+static zdb_dir_t *zdbfs_dir_resize(zdb_dir_t *dir, uint32_t length) {
+    size_t dirsize = sizeof(zdb_direntry_t *) * length;
+
+    if(!(dir = realloc(dir, sizeof(zdb_dir_t) + dirsize)))
+        zdbfs_sysfatal("inode: dir: append: realloc");
+
+    dir->length = length;
+
+    return dir;
 }
 
 size_t zdbfs_inode_file_size(zdb_inode_t *inode) {
@@ -128,10 +135,10 @@ zdb_dir_t *zdbfs_dir_new(uint32_t parent) {
         zdbfs_sysfatal("inode: dir: new: malloc");
 
     // fill it with the 2 default entries
-    dir->length = 0;
-    dir = zdbfs_dir_append(dir, zdbfs_direntry_new(parent, "."));
-    dir = zdbfs_dir_append(dir, zdbfs_direntry_new(parent, ".."));
-    // dir = zdbfs_dir_append(dir, zdbfs_direntry_new(42, "coucou"));
+    // at two first hardcoded position
+    dir = zdbfs_dir_resize(dir, 2);
+    dir->entries[0] = zdbfs_direntry_new(parent, ".");
+    dir->entries[1] = zdbfs_direntry_new(parent, "..");
 
     return dir;
 }
@@ -156,6 +163,48 @@ zdb_inode_t *zdbfs_inode_new_dir(uint32_t parent, uint32_t mode) {
     zdbfs_inode_dir_set(inode, dir);
 
     return inode;
+}
+
+//
+// lookup implementation
+//
+// binary search files inside directory files list
+static ssize_t zdbfs_inode_lookup_direntry_bi(zdb_dir_t *dir, const char *name) {
+    int low = 2;
+    int high = dir->length - 1;
+    int compare;
+
+    while(low <= high) {
+        int mid = low + (high - low) / 2;
+
+        if((compare = strcmp(name, dir->entries[mid]->name)) == 0)
+            return mid;
+
+        if(compare < 0)
+            high = mid - 1;
+        else
+            low = mid + 1;
+    }
+
+    return -1;
+}
+
+// compute insertion index with binary search
+static int zdbfs_inode_dir_append_index(zdb_dir_t *dir, int len, char *name) {
+    // skip initial . and ..
+    int low = 2;
+    int high = len;
+
+    while(low < high) {
+        int mid = (low + high) / 2;
+
+        if(strcmp(name, dir->entries[mid]->name) > 0)
+            low = mid + 1;
+        else
+            high = mid;
+    }
+
+    return low;
 }
 
 //
@@ -323,10 +372,6 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
     for(size_t i = 0; i < dir->length; i++) {
         zdb_direntry_t *entry = dir->entries[i];
 
-        // deleted entry, do not serialize it
-        if(entry->size == 0)
-            continue;
-
         size_t length = zdbfs_direntry_size(entry);
 
         memcpy(ptr, entry, length);
@@ -375,13 +420,20 @@ zdb_direntry_t *zdbfs_direntry_new(uint32_t ino, const char *name) {
 }
 
 zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
-    dir->length += 1;
-    size_t entlen = sizeof(zdb_direntry_t *) * dir->length;
+    // resize directory (grow up)
+    dir = zdbfs_dir_resize(dir, dir->length + 1);
 
-    if(!(dir = realloc(dir, sizeof(zdb_dir_t) + entlen)))
-        zdbfs_sysfatal("inode: dir: append: realloc");
+    // compute index where to insert (ordered) entry
+    int index = zdbfs_inode_dir_append_index(dir, dir->length - 1, entry->name);
 
-    dir->entries[dir->length - 1] = entry;
+    // compute how much we need to shift
+    size_t length = (dir->length - index - 1) * sizeof(zdb_direntry_t *);
+
+    // shift array to get new free spot
+    memmove(dir->entries + index + 1, dir->entries + index, length);
+
+    // insert new element at the right location
+    dir->entries[index] = entry;
 
     return dir;
 }
@@ -591,54 +643,43 @@ uint32_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint32_t ino
     return zdbfs_inode_store_backend(fs->datactx, inode, ino);
 }
 
+static ssize_t zdbfs_inode_lookup_direntry_index(zdb_inode_t *inode, const char *name) {
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    return zdbfs_inode_lookup_direntry_bi(dir, name);
+}
+
 zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name) {
     zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    ssize_t index = zdbfs_inode_lookup_direntry_bi(dir, name);
 
-    for(size_t i = 0; i < dir->length; i++) {
-        // lookup for each entry for the right one
-        zdb_direntry_t *entry = dir->entries[i];
-        if(strcmp(entry->name, name) == 0)
-            return entry;
-    }
+    if(index < 0)
+        return NULL;
 
-    return NULL;
+    return dir->entries[index];
 }
 
 int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
-    zdb_direntry_t *entry;
     zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    ssize_t index;
 
-    if(!(entry = zdbfs_inode_lookup_direntry(inode, name)))
+    // lookup for entry index
+    if((index = zdbfs_inode_lookup_direntry_index(inode, name)) < 0)
         return 1;
 
-    // flag size as zero, will be skipped serialized
-    zdbfs_debug("[+] inode: remove entry: entry found, deleting\n");
+    zdbfs_debug("[+] inode: remove entry: entry found (index: %ld), deleting\n", index);
 
-    // overwrite name (to avoid false match later)
-    memset(entry->name, 0, entry->size);
-    entry->size = 0;
+    // cleanup that entry
+    free(dir->entries[index]);
 
-    // swap last entry with this entry
-    // FIXME: optimize
-    for(size_t i = 0; i < dir->length; i++) {
-        if(dir->entries[i] == entry) {
-            // move last item into this spot
-            // and reduce length by one
-            dir->entries[i] = dir->entries[dir->length - 1];
-            dir->length -= 1;
+    // compute nex array size
+    size_t length = (dir->length - index - 1) * sizeof(zdb_direntry_t *);
+    zdbfs_debug("[+] inode: remove entry: shifting %lu bytes\n", length);
 
-            // we don't need this entry anymore
-            free(entry);
+    // shift array to the left
+    memmove(dir->entries + index, dir->entries + index + 1, length);
+    dir->length -= 1;
 
-            // directory list updated, leaving
-            return 0;
-        }
-    }
-
-    printf("UNLINK ERROR RESIZE\n");
-
-    // something went wrong on re-order
-    return 1;
+    return 0;
 }
 
 //
