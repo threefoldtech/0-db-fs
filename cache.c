@@ -1,6 +1,7 @@
 #define FUSE_USE_VERSION 34
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <fuse_lowlevel.h>
