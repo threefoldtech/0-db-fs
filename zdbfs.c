@@ -484,14 +484,15 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
         // compute which block we use at this offset
         size_t block = zdbfs_offset_to_block(off + sent);
 
-        // compute how many bytes to write _maximun_ on this chunk
+        // compute how many bytes to write _maximum_ on this chunk
         // this can be larger than blocksize
         size_t towrite = (size - sent > ZDBFS_BLOCK_SIZE) ? ZDBFS_BLOCK_SIZE : size - sent;
 
         // keep track of this chunk length
         size_t writepass = towrite;
-        // const char *buffer = buf + sent;
-        const char *buffer = fs->tmpblock;
+
+        // link buffer to global allocated buffer
+        char *buffer = fs->tmpblock;
 
         // if there are any alignment, we need to take it in account
         if(towrite + alignment > ZDBFS_BLOCK_SIZE)
@@ -531,27 +532,23 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
             }
 
             // if fetched block is larger than what we need to write
-            // updating blocksize to read size
+            // updating blocksize to read size, we will write only on
+            // the expected segment but send the full block
             if(reply->length > blocksize)
                 blocksize = reply->length;
 
             // copying block from backend into temporarily buffer
-            memcpy(fs->tmpblock, reply->value, reply->length);
-
-            // merge existing block buffer with write chunk
-            // memcpy(fs->tmpblock + alignment, buf + sent, writepass);
-
-            // replace buffer pointer by temporarily buffer
-            // buffer = fs->tmpblock;
+            memcpy(buffer, reply->value, reply->length);
 
             // FIXME
             zdbfs_zdb_reply_free(reply);
         }
 
-        zdbfs_debug("[+] write: writing %lu bytes (%lu / %lu, block: %u)\n", blocksize, sent, size, blockid);
+        zdbfs_debug("[+] write: writing %lu bytes segment\n", writepass);
+        zdbfs_debug("[+] write: block write: %lu bytes (sent: %lu, block: %u)\n", blocksize, sent, blockid);
 
         // merge existing block buffer with write chunk
-        memcpy(fs->tmpblock + alignment, buf + sent, writepass);
+        memcpy(buffer + alignment, buf + sent, writepass);
 
         // send block to the backend, this can be a new block or an existing
         // block updated

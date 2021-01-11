@@ -54,7 +54,7 @@
     #endif
 
     #define ZDBFS_BLOCK_SIZE          (128 * 1024)    // 128k
-    #define ZDBFS_BLOCKS_CACHE_LIMIT  32             // 512 * 128k (64M)
+    #define ZDBFS_BLOCKS_CACHE_LIMIT  32              // 32 * 128k (4 MB)
 
     #define ZDBFS_KERNEL_CACHE_TIME   5.0
     #define ZDBFS_INOCACHE_LENGTH     4096
