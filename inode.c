@@ -54,7 +54,7 @@ static struct timespec zdbfs_time_sys(uint32_t source) {
 
 size_t zdbfs_offset_to_block(off_t off) {
     size_t block = off / ZDBFS_BLOCK_SIZE;
-    zdbfs_debug("[+] offset %ld = block: %lu\n", off, block);
+    zdbfs_debug("[+] block: offset %ld => block %lu\n", off, block);
     return block;
 }
 
@@ -845,11 +845,11 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
     zdbfs_t *fs = fuse_req_userdata(req);
 
     uint32_t blockid = zdbfs_inode_block_get(inode, block);
-    zdbfs_debug("[+] >>>>>> inode: request WRITE block %u\n", block);
+    zdbfs_debug("[+] inode: write block request: block %u\n", block);
 
     inocache_t *cache;
     if(!(cache = zdbfs_cache_get(req, ino))) {
-        zdbfs_debug("[+] block: store: inode not in cache, direct write\n");
+        zdbfs_debug("[+] inode: block: store: inode not in cache, direct write\n");
 
         // no cache available, force flush
         if((blockid = zdb_set(fs->datactx, blockid, buffer, buflen)) == 0) {

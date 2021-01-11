@@ -349,6 +349,7 @@ blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t 
 //       this check needs to be done before calling it (by get or add)
 blockcache_t *zdbfs_cache_block_update(blockcache_t *cache, const char *data, size_t blocksize) {
     if(cache->blocksize != blocksize) {
+        zdbfs_lowdebug("cache: resize blocksize to: %lu", blocksize);
         free(cache->data);
 
         if(!(cache->data = malloc(blocksize)))
