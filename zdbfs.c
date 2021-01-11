@@ -413,7 +413,16 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         if(reply->length < alignment) {
             zdbfs_debug("[+] read: try to read further than any data on this block\n");
             zdbfs_zdb_reply_free(reply);
-            break;
+
+            // act like block were not found, we don't have
+            // any data useful on this block, we are probably in
+            // a hole
+            size_t eob = ZDBFS_BLOCK_SIZE - alignment;
+
+            fetched += eob;
+            off += eob;
+
+            continue;
         }
 
         // fetched block contains something we need
