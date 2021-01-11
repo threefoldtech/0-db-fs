@@ -537,9 +537,9 @@ void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
 
     zdbfs_inode_free(cache->inode);
     zdbfs_cache_block_free(cache);
-    free(cache);
 
     zdbfs_cache_branch_pop(branch, cache);
+    free(cache);
 }
 
 void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
