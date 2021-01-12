@@ -90,6 +90,7 @@ More information soon :)
 Supported operations:
  - `create`
  - `open`
+   - Support truncate
  - `lookup`
  - `read`
  - `write`
@@ -97,6 +98,7 @@ Supported operations:
  - `rename`
  - `stat`
  - `statfs`
+   - Basic values
  - `opendir`
  - `closedir`
  - `readdir`
@@ -105,12 +107,18 @@ Supported operations:
  - `readlink`
  - `mkdir`
  - `rmdir`
+   - Does not delete non-empty directories
  - `ftruncate`
+ - `getattr`
+ - `setattr`
+   - `chmod`
+   - `chown`
+   - `time`
  - Hole read/write
  - Random read/write
 
 Known unsupported yet:
  - `open`: `O_APPEND` read flag
  - `open`: `O_RD_ONLY`, `O_WRONLY`, `O_RDWR` limitation, everything is allowed
- - User/group permissions checking
+ - User/group permissions internal checking, workaround with fuse default options
  - 
