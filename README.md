@@ -84,3 +84,33 @@ The filesystem can be used as storage to build a Linux kernel with `defconfig` t
 a fully working result file and compilation process.
 
 More information soon :)
+
+# Specification
+
+Supported operations:
+ - `create`
+ - `open`
+ - `lookup`
+ - `read`
+ - `write`
+ - `unlink`
+ - `rename`
+ - `stat`
+ - `statfs`
+ - `opendir`
+ - `closedir`
+ - `readdir`
+ - `link`
+ - `symlink`
+ - `readlink`
+ - `mkdir`
+ - `rmdir`
+ - `ftruncate`
+ - Hole read/write
+ - Random read/write
+
+Known unsupported yet:
+ - `open`: `O_APPEND` read flag
+ - `open`: `O_RD_ONLY`, `O_WRONLY`, `O_RDWR` limitation, everything is allowed
+ - User/group permissions checking
+ - 
