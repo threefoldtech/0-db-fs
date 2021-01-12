@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <linux/fs.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <stddef.h>
 #include "zdbfs.h"
 #include "init.h"
@@ -973,6 +974,37 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     fuse_reply_statfs(req, &vfs);
 }
 
+static void zdbfs_fuse_ioctl(fuse_req_t req, fuse_ino_t ino, int _cmd, void *arg, struct fuse_file_info *fi, unsigned flags, const void *in, size_t insz, size_t outsz) {
+    unsigned int cmd = (unsigned int) _cmd;
+    zdbfs_t *fs = fuse_req_userdata(req);
+    (void) arg;
+    (void) in;
+    (void) insz;
+    (void) outsz;
+    (void) fi;
+
+    zdbfs_syscall("ioctl", "ino: %lu, cmd: %u", ino, cmd);
+
+    if(flags & FUSE_IOCTL_COMPAT)
+        return zdbfs_fuse_error(req, ENOSYS, ino);
+
+    // checking which ioctl requested
+    if(cmd == ZDBFS_IOCTL_SNAPSHOT) {
+        zdbfs_debug("[+] ioctl: snapshot: requested\n");
+
+        size_t flushed = zdbfs_cache_clean(fs);
+        zdbfs_debug("[+] ioctl: snapshot: cache flushed: %lu entries\n", flushed);
+
+        uint64_t now = time(NULL);
+        fuse_reply_ioctl(req, 0, &now, sizeof(uint64_t));
+
+        return;
+    }
+
+    // invalid ioctl
+    zdbfs_fuse_error(req, EINVAL, ino);
+}
+
 static void zdbfs_stats_dump(zdbfs_t *fs) {
     stats_t *s = &fs->stats;
 
@@ -1095,6 +1127,7 @@ static const struct fuse_lowlevel_ops zdbfs_fuse_oper = {
     .releasedir = zdbfs_fuse_releasedir,
     .fsyncdir   = zdbfs_fuse_fsyncdir,
     .statfs     = zdbfs_fuse_statfs,
+    .ioctl      = zdbfs_fuse_ioctl,
 };
 
 int main(int argc, char *argv[]) {

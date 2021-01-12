@@ -60,6 +60,8 @@
     #define ZDBFS_INOCACHE_LENGTH     4096
     #define ZDBFS_EPOLL_MAXEVENTS     64
 
+    #define ZDBFS_IOCTL_SNAPSHOT      _IOR('E', 0, uint64_t)
+
     typedef struct zdb_blocks_t {
         uint64_t length;
         uint32_t blocks[];
