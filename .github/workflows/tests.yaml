@@ -16,12 +16,10 @@ jobs:
 
     - name: Build filesystem
       run: |
-        cd 0-db-fs
         make release
 
     - name: Run tests
       run: |
-        cd 0-db-fs
         sudo mkdir /mnt/zdbfs
         sudo ./zdbfs /mnt/zdbfs
 
