@@ -39,7 +39,7 @@ jobs:
     - name: Run tests
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo ./zdbfs /mnt/zdbfs &
+        sudo ./zdbfs -o allow_other /mnt/zdbfs &
 
     - name: Wait for filesystem ready
       run: |
@@ -55,35 +55,42 @@ jobs:
         done
 
     - name: Download Linux Kernel
-      run: |
-        cd /tmp && wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.9.13.tar.xz
+      working-directory: /tmp
+      run: wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.9.13.tar.xz
 
     - name: Extract the kernel on zdbfs
-      run: |
-        sudo tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
+      run: tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
 
     - name: Prepare kernel configuration on zdbfs
-      run: |
-        sudo bash -c 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig'
+      working-directory: /mnt/zdbfs/linux-5.9.13
+      run: make defconfig
+      env: 
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
+        
 
     - name: Build kernel on zdbfs
-      run: |
-        sudo bash -c 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8'
+      working-directory: /mnt/zdbfs/linux-5.9.13
+      run: make -j 8
+      env: 
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
 
     - name: Extract the kernel on the root filesystem
-      run: |
-        tar -xf /tmp/linux-5.9.13.tar.xz -C /tmp/
+      run: tar -xf /tmp/linux-5.9.13.tar.xz -C /tmp/
 
     - name: Prepare the kernel on root filesystem
-      run: |
-        cd /tmp/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig
+      working-directory: /tmp/linux-5.9.13
+      run: make defconfig
+      env:
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
+
 
     - name: Build the kernel on root filesystem
-      run: |
-        cd /tmp/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8
+      working-directory: /tmp/linux-5.9.13
+      run: make -j 8
+      env:
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
 
     - name: Compare builds
-      run:
-        sudo diff -qr -x tools -x x86 /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
+      run: diff -qr -x tools -x x86 /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
 
 
