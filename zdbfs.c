@@ -34,10 +34,6 @@
 // error case
 //
 #define volino __attribute__((cleanup(__cleanup_inode)))
-// #define volino
-
-// WARNING: volino disabled for cache, this lead to
-//          major leak
 
 void __cleanup_inode(void *p) {
     zdb_inode_t *x = * (zdb_inode_t **) p;
