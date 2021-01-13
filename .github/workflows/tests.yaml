@@ -67,12 +67,19 @@ jobs:
     - name: Compare extracted kernel
       run: diff -qr /tmp/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
 
+
     - name: Prepare the kernel on root filesystem
       working-directory: /tmp/linux-5.9.13
       run: make defconfig
       env:
         KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
 
+    - name: Prepare kernel configuration on zdbfs
+      working-directory: /mnt/zdbfs/linux-5.9.13
+      run: make defconfig
+      env: 
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
+    
 
     - name: Build the kernel on root filesystem
       working-directory: /tmp/linux-5.9.13
@@ -80,19 +87,12 @@ jobs:
       env:
         KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
 
- 
-
-    - name: Prepare kernel configuration on zdbfs
-      working-directory: /mnt/zdbfs/linux-5.9.13
-      run: make defconfig
-      env: 
-        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
-
     - name: Build kernel on zdbfs
       working-directory: /mnt/zdbfs/linux-5.9.13
       run: make -j 8
       env: 
         KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
+
 
     - name: Compare builds
       run: diff -qr -x tools -x x86 /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
