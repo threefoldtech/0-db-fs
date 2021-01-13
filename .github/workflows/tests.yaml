@@ -96,6 +96,5 @@ jobs:
 
 
     - name: Compare builds
-      run: diff -qr -x tools -x x86 /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
-
+      run: diff -qr -x tools -x x86 /tmp/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
 
