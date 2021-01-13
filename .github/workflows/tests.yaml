@@ -62,20 +62,25 @@ jobs:
       run: |
         sudo tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
 
-    - name: Build the kernel on zdbfs
+    - name: Prepare kernel configuration on zdbfs
       run: |
         sudo bash -c 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig'
+
+    - name: Build kernel on zdbfs
+      run: |
         sudo bash -c 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8'
 
     - name: Extract the kernel on the root filesystem
       run: |
         tar -xf /tmp/linux-5.9.13.tar.xz -C /tmp/
 
+    - name: Prepare the kernel on root filesystem
+      run: |
+        cd /tmp/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig
+
     - name: Build the kernel on root filesystem
       run: |
-        cd /tmp/linux-5.9.13
-        KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig
-        KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8
+        cd /tmp/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8
 
     - name: Compare builds
       run:
