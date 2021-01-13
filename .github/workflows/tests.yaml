@@ -76,7 +76,7 @@ jobs:
 
     - name: Prepare kernel configuration on zdbfs
       working-directory: /mnt/zdbfs/linux-5.9.13
-      run: make defconfig
+      run: make V=1 defconfig
       env: 
         KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
     
