@@ -65,7 +65,7 @@ jobs:
       run: tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
 
     - name: Compare extracted kernel
-      run: diff -qr /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
+      run: diff -qr /tmp/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
 
     - name: Prepare the kernel on root filesystem
       working-directory: /tmp/linux-5.9.13
