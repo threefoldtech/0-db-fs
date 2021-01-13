@@ -58,22 +58,6 @@ jobs:
       working-directory: /tmp
       run: wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.9.13.tar.xz
 
-    - name: Extract the kernel on zdbfs
-      run: tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
-
-    - name: Prepare kernel configuration on zdbfs
-      working-directory: /mnt/zdbfs/linux-5.9.13
-      run: make defconfig
-      env: 
-        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
-        
-
-    - name: Build kernel on zdbfs
-      working-directory: /mnt/zdbfs/linux-5.9.13
-      run: make -j 8
-      env: 
-        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
-
     - name: Extract the kernel on the root filesystem
       run: tar -xf /tmp/linux-5.9.13.tar.xz -C /tmp/
 
@@ -88,6 +72,22 @@ jobs:
       working-directory: /tmp/linux-5.9.13
       run: make -j 8
       env:
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
+
+ 
+    - name: Extract the kernel on zdbfs
+      run: tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
+
+    - name: Prepare kernel configuration on zdbfs
+      working-directory: /mnt/zdbfs/linux-5.9.13
+      run: make defconfig
+      env: 
+        KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
+
+    - name: Build kernel on zdbfs
+      working-directory: /mnt/zdbfs/linux-5.9.13
+      run: make -j 8
+      env: 
         KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
 
     - name: Compare builds
