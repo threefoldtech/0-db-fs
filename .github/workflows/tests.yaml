@@ -39,12 +39,20 @@ jobs:
     - name: Run tests
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo chown runner /mnt/zdbfs
-        ./zdbfs /mnt/zdbfs &
+        sudo ./zdbfs /mnt/zdbfs &
 
     - name: Wait for filesystem ready
       run: |
-        while ! grep -q zdbfs /proc/mounts; do sleep 0.1; done
+        limit=20
+        while ! grep -q zdbfs /proc/mounts; do 
+            sleep 0.1
+            limit=$(($limit - 1))
+
+            if [ $limit -lt 0 ]; then
+                echo "Filesystem timeout"
+                exit 1
+            fi
+        done
 
     - name: Download Linux Kernel
       run: |
