@@ -366,6 +366,7 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
     volino zdb_inode_t *inode = NULL;
     size_t fetched = 0;
     char *buffer;
+    off_t ooff = off; // copy original offset
 
     zdbfs_syscall("read", "ino %lu: size %lu, off: %lu", ino, size, off);
 
@@ -440,8 +441,19 @@ static void zdbfs_fuse_read(fuse_req_t req, fuse_ino_t ino, size_t size, off_t o
         zdbfs_zdb_reply_free(reply);
 
         if(chunk == 0) {
-            zdbfs_debug("[+] read: nothing more to read\n");
-            break;
+            if(ooff + fetched >= inode->size) {
+                // eof reached
+                zdbfs_debug("[+] read: nothing more to read [%lu >= %lu]\n", off + fetched, inode->size);
+                break;
+            }
+
+            zdbfs_debug("[+] read: nothing left on that block, trying next one\n");
+            // block doesn't contains any relevant data anymore
+            // let's try maybe next block (if any, if none, will
+            // fails on the beginin of the next loop)
+            chunk = ZDBFS_BLOCK_SIZE - alignment;
+
+            zdbfs_debug("[+] read: skipping last %lu bytes to reach next block\n", chunk);
         }
 
         fetched += chunk;
