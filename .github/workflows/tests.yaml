@@ -40,20 +40,7 @@ jobs:
     - name: Run tests
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo ./zdbfs -o allow_other /mnt/zdbfs &
-
-    - name: Wait for filesystem ready
-      run: |
-        limit=20
-        while ! grep -q zdbfs /proc/mounts; do 
-            sleep 0.1
-            limit=$(($limit - 1))
-
-            if [ $limit -lt 0 ]; then
-                echo "Filesystem timeout"
-                exit 1
-            fi
-        done
+        sudo ./zdbfs -o allow_other -o background /mnt/zdbfs
 
     - name: Download Linux Kernel
       working-directory: /tmp
