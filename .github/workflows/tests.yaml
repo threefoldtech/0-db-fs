@@ -9,7 +9,7 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget
+        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget libelf-dev flex bison libssl-dev bc
 
     - name: Checkout code into the Go module directory
       uses: actions/checkout@v1
