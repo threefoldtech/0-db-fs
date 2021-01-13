@@ -39,7 +39,7 @@ jobs:
     - name: Run tests
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo chown worker /mnt/zdbfs
+        sudo chown runner /mnt/zdbfs
         ./zdbfs /mnt/zdbfs &
 
     - name: Wait for filesystem ready
