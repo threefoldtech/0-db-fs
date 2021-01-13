@@ -61,6 +61,12 @@ jobs:
     - name: Extract the kernel on the root filesystem
       run: tar -xf /tmp/linux-5.9.13.tar.xz -C /tmp/
 
+    - name: Extract the kernel on zdbfs
+      run: tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
+
+    - name: Compare extracted kernel
+      run: diff -qr /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
+
     - name: Prepare the kernel on root filesystem
       working-directory: /tmp/linux-5.9.13
       run: make defconfig
@@ -75,8 +81,6 @@ jobs:
         KBUILD_BUILD_TIMESTAMP: Tue Dec 15 03:54:50 AM CET 2020
 
  
-    - name: Extract the kernel on zdbfs
-      run: tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
 
     - name: Prepare kernel configuration on zdbfs
       working-directory: /mnt/zdbfs/linux-5.9.13
