@@ -1172,13 +1172,16 @@ int main(int argc, char *argv[]) {
     if(fuse_session_mount(se, fopts.mountpoint) != 0)
         return 1;
 
-    // fuse_daemonize(opts.foreground);
-    // fuse_daemonize(0);
-
     //
     // processing events
     //
     zdbfs_success("fuse: ready, waiting events: %s", fopts.mountpoint);
+
+    if(zdbfs.background) {
+        zdbfs_debug("[+] fuse: forking, going to background\n");
+        fuse_daemonize(0);
+    }
+
     int ret = zdbfs_fuse_session_loop(se, &zdbfs, 1000);
     // (void) config;
 
