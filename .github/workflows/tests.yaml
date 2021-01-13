@@ -9,7 +9,7 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools
+        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget
 
     - name: Checkout code into the Go module directory
       uses: actions/checkout@v1
@@ -39,5 +39,38 @@ jobs:
     - name: Run tests
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo ./zdbfs /mnt/zdbfs
+        sudo ./zdbfs /mnt/zdbfs &
+
+    - name: Wait for filesystem ready
+      run: |
+        while ! grep -q zdbfs /proc/mounts; do sleep 0.1; done
+
+    - name: Download Linux Kernel
+      run: |
+        cd /tmp && wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.9.13.tar.xz
+
+    - name: Extract the kernel on zdbfs
+      run: |
+        tar -xf /tmp/linux-5.9.13.tar.xz -C /mnt/zdbfs/
+
+    - name: Build the kernel on zdbfs
+      run: |
+        cd /mnt/zdbfs/linux-5.9.13
+        KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig
+        KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8
+
+    - name: Extract the kernel on the root filesystem
+      run: |
+        tar -xf /tmp/linux-5.9.13.tar.xz -C /opt/
+
+    - name: Build the kernel on root filesystem
+      run: |
+        cd /opt/linux-5.9.13
+        KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig
+        KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8
+
+    - name: Compare builds
+      run:
+        diff -qr -x tools -x x86 /opt/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
+
 
