@@ -9,7 +9,7 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev
+        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools
 
     - name: Checkout code into the Go module directory
       uses: actions/checkout@v1
@@ -17,6 +17,24 @@ jobs:
     - name: Build filesystem
       run: |
         make release
+
+    - name: Build 0-db
+      run: |
+        git clone https://github.com/threefoldtech/0-db
+        cd 0-db/libzdb && make release
+        cd ../zdbd && make release
+
+    - name: Run 0-db backend
+      run: |
+        cd 0-db/zdbd && ./zdbd --mode seq --background
+
+    - name: Create original namespaces
+      run: |
+        echo "NSNEW zdbfs-meta" | redis-cli -p 9900
+        echo "NSNEW zdbfs-data" | redis-cli -p 9900
+        echo "NSNEW zdbfs-temp" | redis-cli -p 9900
+        echo "NSSET zdbfs-temp password hello" | redis-cli -p 9900
+        echo "NSSET zdbfs-temp public 0" | redis-cli -p 9900
 
     - name: Run tests
       run: |
