@@ -64,8 +64,8 @@ jobs:
 
     - name: Build the kernel on zdbfs
       run: |
-        sudo 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig'
-        sudo 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8'
+        sudo bash -c 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make defconfig'
+        sudo bash -c 'cd /mnt/zdbfs/linux-5.9.13 && KBUILD_BUILD_TIMESTAMP="Tue Dec 15 03:54:50 AM CET 2020" make -j 8'
 
     - name: Extract the kernel on the root filesystem
       run: |
