@@ -85,3 +85,46 @@ jobs:
     - name: Compare builds
       run: diff -qr -x tools -x x86 /tmp/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
 
+  sanity:
+    name: FIlesystem Sanity checks
+    runs-on: ubuntu-20.04
+    steps:
+    - name: Prepare dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget 
+        sudo apt-get install -y libelf-dev flex bison libssl-dev bc
+
+    - name: Checkout code into the Go module directory
+      uses: actions/checkout@v1
+
+    - name: Build filesystem
+      run: |
+        make release
+
+    - name: Build 0-db
+      run: |
+        git clone https://github.com/threefoldtech/0-db
+        cd 0-db/libzdb && make release
+        cd ../zdbd && make release
+
+    - name: Run 0-db backend
+      run: |
+        cd 0-db/zdbd && ./zdb --mode seq --background
+
+    - name: Create original namespaces
+      run: |
+        echo "NSNEW zdbfs-meta" | redis-cli -p 9900
+        echo "NSNEW zdbfs-data" | redis-cli -p 9900
+        echo "NSNEW zdbfs-temp" | redis-cli -p 9900
+        echo "NSSET zdbfs-temp password hello" | redis-cli -p 9900
+        echo "NSSET zdbfs-temp public 0" | redis-cli -p 9900
+
+    - name: Run zdbfs
+      run: |
+        sudo mkdir /mnt/zdbfs
+        sudo ./zdbfs -o allow_other -o background /mnt/zdbfs
+
+    - name: Run sanity check
+      run: ./tests/basic.sh
+
