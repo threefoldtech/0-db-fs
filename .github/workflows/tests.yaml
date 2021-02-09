@@ -12,7 +12,7 @@ jobs:
         sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget 
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
 
-    - name: Checkout code into the Go module directory
+    - name: Checkout development code
       uses: actions/checkout@v1
 
     - name: Build filesystem
@@ -95,7 +95,7 @@ jobs:
         sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget 
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
 
-    - name: Checkout code into the Go module directory
+    - name: Checkout development code
       uses: actions/checkout@v1
 
     - name: Build filesystem

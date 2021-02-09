@@ -20,7 +20,7 @@ tests() {
     echo "Hello World" > ${rootfs}/hello
     sum=$(md5sum ${rootfs}/hello | awk '{ print $1 }')
 
-    [[ "$sum" == "e59ff97941044f85df5297e1c302d260" ]] || echo "Test failed"
+    [[ "$sum" == "e59ff97941044f85df5297e1c302d260" ]] || (echo "Test failed" && false)
 
 
     stat ${rootfs}/hello
@@ -48,8 +48,19 @@ tests() {
     sum1=$(md5sum ${rootfs}/newdir/subdir/hello/newname | awk '{ print $1 }')
     sum2=$(md5sum ${rootfs}/renamedfile | awk '{ print $1 }')
 
-    [[ "$sum1" == "$sum2" ]] || echo "Test failed"
+    [[ "$sum1" == "$sum2" ]] || (echo "Test failed" && false)
 
+    truncate -s 1G ${rootfs}/ftrunc
+
+    echo Coucou >> ${rootfs}/ftrunc
+    sum=$(md5sum ${rootfs}/ftrunc | awk '{ print $1 }')
+
+    [[ "$sum" == "a71086b03d10ef26e3affbdab8e37a47" ]] || (echo "Test failed" && false)
+
+    ls -alh ${rootfs}/ftrunc
+    rm -f ${rootfs}/ftrunc
+
+    # cleanup
     rm -f ${rootfs}/renamedfile
     rm -f ${rootfs}/newsymlink
 
