@@ -126,5 +126,5 @@ jobs:
         sudo ./zdbfs -o allow_other -o background /mnt/zdbfs
 
     - name: Run sanity check
-      run: ./tests/basic.sh
+      run: ./tests/basic.sh /mnt/zdbfs
 
