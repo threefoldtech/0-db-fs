@@ -171,6 +171,7 @@
         char *temp_pass;      // temporary namespace name (mandatory)
 
         int nocache;          // runtime cache disabled
+        int background;       // fork to background
 
     } zdbfs_options;
 
@@ -185,6 +186,7 @@
         // to hold temporary buffer for read/write changes
         char *tmpblock;
 
+        int background;           // fork to background
         int caching;              // flag to enable runtime cache
         stats_t stats;            // global statistics
 
