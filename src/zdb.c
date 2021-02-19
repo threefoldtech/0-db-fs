@@ -231,6 +231,37 @@ int zdb_del(redisContext *remote, uint32_t id) {
     return 0;
 }
 
+int zdbfs_zdb_create(zdbfs_t *fs) {
+    zdbfs_verbose("[+] zdb: auto creating namespace\n");
+
+    if(zdb_nsnew(fs->metactx, fs->opts->meta_ns)) {
+        zdbfs_critical("zdb: could not auto create metadata namespace: %s", fs->opts->meta_ns);
+        return 1;
+    }
+
+    if(zdb_nsnew(fs->datactx, fs->opts->data_ns)) {
+        zdbfs_critical("zdb: could not auto create data namespace: %s", fs->opts->data_ns);
+        return 1;
+    }
+
+    if(zdb_nsnew(fs->tempctx, fs->opts->temp_ns)) {
+        zdbfs_critical("zdb: could not auto create temporary namespace: %s", fs->opts->temp_ns);
+        return 1;
+    }
+
+    if(zdb_nsset(fs->metactx, fs->opts->temp_ns, "public", "0")) {
+        zdbfs_critical("zdb: could not auto set temporary namespace public: %s", fs->opts->temp_ns);
+        return 1;
+    }
+
+    if(zdb_nsset(fs->metactx, fs->opts->temp_ns, "password", fs->opts->temp_pass)) {
+        zdbfs_critical("zdb: could not auto set temporary namespace password: %s",fs->opts->temp_ns );
+        return 1;
+    }
+
+    return 0;
+}
+
 int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     // metadata
@@ -268,6 +299,13 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
         zdbfs_critical("zdb: temporary: [%s/%d]: %s", fs->opts->temp_host, fs->opts->temp_port, fs->tempctx->errstr);
         return 1;
     }
+
+    //
+    // auto-create namespace flag
+    //
+    if(fs->autons)
+        zdbfs_zdb_create(fs);
+
 
     //
     // select namespaces
