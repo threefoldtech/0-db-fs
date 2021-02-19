@@ -31,6 +31,53 @@ int zdb_select(redisContext *remote, char *namespace, char *password) {
 
     if(strcmp(reply->str, "OK") != 0) {
         zdbfs_error("zdb: select: %s: %s", namespace, reply->str);
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    freeReplyObject(reply);
+
+    return 0;
+}
+
+int zdb_nsnew(redisContext *remote, char *namespace) {
+    const char *argv[] = {"NSNEW", namespace};
+    int argc = 2;
+    redisReply *reply;
+
+    zdbfs_debug("[+] zdb: nsnew: namespace: %s\n", namespace);
+
+    if(!(reply = redisCommandArgv(remote, argc, argv, NULL))) {
+        zdbfs_critical("zdb: nsnew: %s: %s", namespace, remote->errstr);
+        return 1;
+    }
+
+    if(strcmp(reply->str, "OK") != 0) {
+        zdbfs_error("zdb: nsnew: %s: %s", namespace, reply->str);
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    freeReplyObject(reply);
+
+    return 0;
+}
+
+int zdb_nsset(redisContext *remote, char *namespace, char *setting, char *value) {
+    const char *argv[] = {"NSSET", namespace, setting, value};
+    int argc = 4;
+    redisReply *reply;
+
+    zdbfs_debug("[+] zdb: nsset: namespace: %s, %s = %s\n", namespace, setting, value);
+
+    if(!(reply = redisCommandArgv(remote, argc, argv, NULL))) {
+        zdbfs_critical("zdb: nsset: %s: %s", namespace, remote->errstr);
+        return 1;
+    }
+
+    if(strcmp(reply->str, "OK") != 0) {
+        zdbfs_error("zdb: nsset: %s: %s", namespace, reply->str);
+        freeReplyObject(reply);
         return 1;
     }
 
