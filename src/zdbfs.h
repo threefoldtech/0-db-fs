@@ -1,7 +1,7 @@
 #ifndef ZDBFS_H
     #define ZDBFS_H
 
-    #define ZDBFS_VERSION  "0.1.0"
+    #define ZDBFS_VERSION  "0.1.1"
 
     #define COLOR_GREY   "\033[30;1m"
     #define COLOR_RED    "\033[31;1m"
