@@ -1,4 +1,4 @@
-all release:
+all release production:
 	$(MAKE) -C src $@
 	cp -f src/zdbfs zdbfs
 
