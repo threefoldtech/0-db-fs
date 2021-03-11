@@ -207,13 +207,13 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
     // new file
     create = zdbfs_inode_new_file(req, mode);
     if((ino = zdbfs_inode_store_metadata(req, create, 0)) == 0)
-        dies("create", "could not create inode");
+        return zdbfs_fuse_error(req, EIO, parent);
 
     // update directory with new entry
     zdbfs_inode_dir_append(inode, ino, name);
 
     if(zdbfs_inode_store_metadata(req, inode, parent) != parent)
-        dies("create", "could not update parent directory");
+        return zdbfs_fuse_error(req, EIO, parent);
 
     zdbfs_inode_to_fuse_param(&e, create, ino);
     fuse_reply_create(req, &e, fi);
