@@ -97,6 +97,27 @@ static size_t zdb_nsinfo_sizeval(char *buffer, char *entry) {
     return strtoumax(match, NULL, 10);
 }
 
+static int zdb_locked(redisReply *reply) {
+    if(reply->type != REDIS_REPLY_ERROR)
+        return 0;
+
+    if(strncmp(reply->str, "Namespace is temporarily locked", 31) == 0) {
+        zdbfs_debug("[-] zdb: namespace locked\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+static void zdb_msleep(int msec) {
+    struct timespec ts;
+
+    ts.tv_sec = msec / 1000;
+    ts.tv_nsec = (msec % 1000) * 1000000;
+
+    nanosleep(&ts, &ts);
+}
+
 zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
     const char *argv[] = {"NSINFO", namespace};
     zdb_nsinfo_t *nsinfo;
@@ -161,7 +182,7 @@ zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
 }
 
 uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t length) {
-    redisReply *reply;
+    redisReply *reply = NULL;
     uint32_t response = 0;
     uint32_t *rid = &id;
     size_t rsize = sizeof(id);
@@ -177,10 +198,18 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     const char *argv[] = {"SET", (char *) rid, buffer};
     size_t argvl[] = {3, rsize, length};
 
-    if(!(reply = redisCommandArgv(remote, 3, argv, argvl))) {
-        zdbfs_critical("zdb: set: id %d: %s", id, remote->errstr);
-        return 0;
-    }
+    do {
+        if(reply) {
+            freeReplyObject(reply);
+            zdb_msleep(100);
+        }
+
+        if(!(reply = redisCommandArgv(remote, 3, argv, argvl))) {
+            zdbfs_critical("zdb: set: id %d: %s", id, remote->errstr);
+            return 0;
+        }
+
+    } while(zdb_locked(reply));
 
     if(reply->type == REDIS_REPLY_ERROR) {
         zdbfs_error("zdb: set: error: %s", reply->str);
@@ -211,14 +240,22 @@ int zdb_del(redisContext *remote, uint32_t id) {
     char *rid = (char *) &id;
     const char *argv[] = {"DEL", rid};
     size_t argvl[] = {3, sizeof(id)};
-    redisReply *reply;
+    redisReply *reply = NULL;
 
     zdbfs_debug("[+] zdb: del: request id: %u\n", id);
 
-    if(!(reply = redisCommandArgv(remote, 2, argv, argvl))) {
-        zdbfs_critical("zdb: del: id %d: %s", id, remote->errstr);
-        return 1;
-    }
+    do {
+        if(reply) {
+            freeReplyObject(reply);
+            zdb_msleep(100);
+        }
+
+        if(!(reply = redisCommandArgv(remote, 2, argv, argvl))) {
+            zdbfs_critical("zdb: del: id %d: %s", id, remote->errstr);
+            return 1;
+        }
+
+    } while(zdb_locked(reply));
 
     if(reply->type == REDIS_REPLY_ERROR) {
         zdbfs_error("zdb: del: error: %s", reply->str);
