@@ -36,6 +36,12 @@ completed or waiting some time before flushing pending changes to the backend.
 Only `libfuse3` and `hiredis` are required to build `zdbfs`, on Linux.
 Note that, only `gcc` or `clang` are supported as C compiler.
 
+# Build
+
+You can build a debug version with simple `make` command.
+
+To produce a release version (no debug message), you can use `make release` command.
+
 # Options
 
 You can configure zdbfs via runtime arguments to pass via `-o` during mount, eg: `zdbfs -o mh=1.1.1.1,ts=newpwd /mnt/temp`
@@ -58,12 +64,33 @@ tn=zdbfs-temp       temporary namespace name
 ts=hello            temporary namespace password (mandatory)
 
 nocache             disable runtime cache (for debug purpose)
+autons              try to create required namespace on runtime
 ```
 
 # Quick Setup
 
-To get `zdbfs` to work out-of-box using a local 0-db (in sequential mode), prepare required namespaces:
+## Automatic
 
+Start a 0-db locally, in sequential mode:
+```
+zdb --mode seq
+```
+
+Then start `zdbfs` with `autons` option, to mount filesystem on `/mnt/zdbfs`:
+```
+./zdbfs -o autons /mnt/zdbfs
+```
+
+That's it.
+
+## Manual
+
+Start a 0-db locally, in sequential mode:
+```
+zdb --mode seq
+```
+
+Then create required namespaces:
 ```
 cat << EOF | redis-cli -p 9900
 NSNEW zdbfs-meta
