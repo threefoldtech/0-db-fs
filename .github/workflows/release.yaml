@@ -1,0 +1,45 @@
+name: Build release
+on:  
+  release:
+    types: [created]
+jobs:
+  generate:
+    name: Create release artifacts
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@master
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git build-essential wget pkg-config \
+            udev libudev-dev meson libhiredis-dev
+
+      - name: Download libfuse3
+        run: |
+          wget https://github.com/libfuse/libfuse/releases/download/fuse-3.10.1/fuse-3.10.1.tar.xz
+          tar -xf fuse-3.10.1.tar.xz
+
+      - name: Build libfuse3
+        run: |
+          cd fuse-3.10.1
+          mkdir build
+          cd build
+          meson .. --prefix /usr
+          ninja
+          sudo ninja install
+
+      - name: Building zdbfs
+        run: |
+          make release
+          version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
+          cp zdbfs zdbfs-${version}-amd64-linux-gnu
+
+      - name: Upload the artifacts
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: 'zdbfs-*-linux-gnu'
+
