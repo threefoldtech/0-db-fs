@@ -1,8 +1,7 @@
-on: [push]
-# on:  
-    # release:
-    # types: [created]
 name: Build release
+on:  
+  release:
+    types: [created]
 jobs:
   generate:
     name: Create release artifacts
@@ -36,7 +35,6 @@ jobs:
           make release
           version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
           cp zdbfs zdbfs-${version}-amd64-linux-gnu
-          ls
 
       - name: Upload the artifacts
         uses: skx/github-action-publish-binaries@master
