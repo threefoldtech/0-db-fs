@@ -33,9 +33,9 @@ jobs:
 
       - name: Building zdbfs
         run: |
-          ls
           make release
-          cp zdbfs zdbfs-0.x
+          version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
+          cp zdbfs zdbfs-${version}-amd64-linux-gnu
           ls
 
       - name: Upload the artifacts
@@ -43,5 +43,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: 'zdbfs-0.x'
+          args: 'zdbfs-*-linux-gnu'
 
