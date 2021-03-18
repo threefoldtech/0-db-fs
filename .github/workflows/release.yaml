@@ -32,7 +32,7 @@ jobs:
 
       - name: Building zdbfs
         run: |
-          make release
+          make production
           version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
           cp zdbfs zdbfs-${version}-amd64-linux-gnu
 
