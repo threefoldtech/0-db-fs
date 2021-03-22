@@ -173,6 +173,7 @@
         int nocache;          // runtime cache disabled
         int background;       // fork to background
         int autons;           // runtime namespace create
+        char *logfile;        // logfile where logging actions
 
     } zdbfs_options;
 
@@ -190,6 +191,8 @@
         int background;           // fork to background
         int caching;              // flag to enable runtime cache
         int autons;               // flag to create namespace on init
+        char *logfile;            // global logfile where to log actions
+        FILE *logfd;              // log file descriptor
         stats_t stats;            // global statistics
 
         zdbfs_options *opts;

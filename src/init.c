@@ -33,9 +33,10 @@ static struct fuse_opt zdbfs_opts[] = {
     {"tn=%s", zdb_opt_field(temp_ns), 0},
     {"ts=%s", zdb_opt_field(temp_pass), 0},
 
-    {"nocache", zdb_opt_field(nocache), 0},
-    {"autons", zdb_opt_field(autons), 0},
+    {"nocache",    zdb_opt_field(nocache), 0},
+    {"autons",     zdb_opt_field(autons), 0},
     {"background", zdb_opt_field(background), 0},
+    {"logfile=%s", zdb_opt_field(logfile), 0},
 };
 
 int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opts *fopts) {
@@ -99,6 +100,7 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
     fs->caching = (fs->opts->nocache == 0) ? 0 : 1;
     fs->background = (fs->opts->background == 0) ? 1 : 0;
     fs->autons = (fs->opts->autons == 0) ? 1 : 0;
+    fs->logfile = fs->opts->logfile;
 
     // initialize cache
     if(!(fs->tmpblock = malloc(ZDBFS_BLOCK_SIZE)))
@@ -119,6 +121,13 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
     if(fs->caching == 0)
         zdbfs_warning("warning: cache disabled [%d]", fs->caching);
 
+    if(fs->logfile) {
+        zdbfs_debug("[+] logfile enabled: %s\n", fs->logfile);
+
+        if(!(fs->logfd = fopen(fs->logfile, "a")))
+            zdbfs_sysfatal("could not open logfile");
+    }
+
     return 0;
 }
 
@@ -132,6 +141,10 @@ int zdbfs_init_free(zdbfs_t *fs, struct fuse_cmdline_opts *fopts) {
 
     free(fs->inoroot->branches);
     free(fs->inoroot);
+    free(fs->logfile);
+
+    if(fs->logfd)
+        fclose(fs->logfd);
 
     free(fs->opts->meta_host);
     free(fs->opts->meta_ns);

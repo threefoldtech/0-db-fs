@@ -34,6 +34,7 @@
 // error case
 //
 #define volino __attribute__((cleanup(__cleanup_inode)))
+#define volstr __attribute__((cleanup(__cleanup_malloc)))
 
 void __cleanup_inode(void *p) {
     zdb_inode_t *x = * (zdb_inode_t **) p;
@@ -42,6 +43,11 @@ void __cleanup_inode(void *p) {
 
     if(x->ino == 0)
         zdbfs_inode_free(x);
+}
+
+void __cleanup_malloc(void *p) {
+    void *x = * (void **) p;
+    free(x);
 }
 
 //
@@ -82,6 +88,67 @@ void zdbd_fulldump(void *_data, size_t len) {
 //
 // general helpers
 //
+
+// FIXME: this is really dirty, but only used for log
+//        this is not a critical feature, but please fix me
+//
+//        this function does a reverse lookup based from an inode
+//        to build the full path
+char *zdbfs_resolve(fuse_req_t req, fuse_ino_t target, const char *name) {
+    char **paths = calloc(sizeof(char *), 256);
+    int index = 1;
+    fuse_ino_t parent = target;
+
+    while(target > 1) {
+        zdb_inode_t *inode = NULL;
+
+        if(!(inode = zdbfs_directory_fetch(req, parent))) {
+            free(paths);
+            // FIXME: crash on non dir, req is reset by zdbfs_directory_fetch
+            return strdup("<directory>");
+        }
+
+        zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+
+        for(uint32_t i = 0; i < dir->length; i++) {
+            if(dir->entries[i]->ino == target) {
+                paths[index++] = strdup(dir->entries[i]->name);
+                target = parent;
+                break;
+            }
+        }
+
+        parent = dir->entries[0]->ino;
+        zdbfs_inode_free(inode);
+    }
+
+    char *path = calloc(sizeof(char), 1024);
+    int len = 0;
+
+    for(int i = index - 1; i > 0; i--) {
+        len += sprintf(path + len, "/%s", paths[i]);
+        free(paths[i]);
+    }
+
+    if(name)
+        sprintf(path + len, "/%s", name);
+
+    free(paths);
+
+    return path;
+}
+
+void zdbfs_log(fuse_req_t req, const char *fmt, ...) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    va_list args;
+    time_t timestamp = time(NULL);
+
+    va_start(args, fmt);
+    fprintf(fs->logfd, "%ld: ", timestamp);
+    vfprintf(fs->logfd, fmt, args);
+    va_end(args);
+}
+
 void dies(char *help, char *value) {
     fprintf(stderr, "[-] %s: %s\n", help, value);
     exit(EXIT_FAILURE);
@@ -127,6 +194,9 @@ static void zdbfs_fuse_setattr(fuse_req_t req, fuse_ino_t ino, struct stat *attr
     (void) fi;
 
     zdbfs_syscall("setattr", "ino: %ld", ino);
+
+    volstr char *path = zdbfs_resolve(req, ino, NULL);
+    zdbfs_log(req, "setattr: %s\n", path);
 
     // fetching current inode state
     if(!(inode = zdbfs_inode_fetch(req, ino)))
@@ -201,6 +271,9 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     zdbfs_syscall("create", "parent: %ld, name: %s", parent, name);
 
+    volstr char *path = zdbfs_resolve(req, parent, name);
+    zdbfs_log(req, "create: %s\n", path);
+
     if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
 
@@ -226,6 +299,7 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     volino zdb_inode_t *newdir = NULL;
 
     zdbfs_syscall("mkdir", "parent: %ld, name: %s", parent, name);
+    zdbfs_log(req, "mkdir: %ld/%s\n", parent, name);
 
     if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
@@ -254,6 +328,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     off_t limit = 0;
 
     zdbfs_syscall("readdir", "ino: %lu, size: %lu, offset: %ld", ino, size, off);
+    zdbfs_log(req, "readdir: %ld\n", ino);
 
     if(!(inode = zdbfs_directory_fetch(req, ino))) {
         printf("FAILED\n");
@@ -318,6 +393,7 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     volino zdb_inode_t *inode = NULL;
 
     zdbfs_syscall("open", "ino %lu: request", ino);
+    zdbfs_log(req, "open: %ld\n", ino);
 
     if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
@@ -597,6 +673,7 @@ static void zdbfs_fuse_symlink(fuse_req_t req, const char *link, fuse_ino_t pare
     struct fuse_entry_param e;
 
     zdbfs_syscall("symlink", "ino %lu/%s -> %s", parent, name, link);
+    zdbfs_log(req, "symlink: %ld/%s -> %s\n", parent, name, link);
 
     // fetching original inode information
     if(!(directory = zdbfs_inode_fetch(req, parent)))
@@ -640,6 +717,7 @@ static void zdbfs_fuse_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent
     struct fuse_entry_param e;
 
     zdbfs_syscall("link", "ino %lu -> %lu, %s", ino, newparent, newname);
+    zdbfs_log(req, "link: %lu -> %lu, %lu\n", ino, newparent, newname);
 
     // fetching original inode information
     if(!(inode = zdbfs_inode_fetch(req, ino)))
@@ -681,6 +759,7 @@ static void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *nam
     // FIXME: no forget support
     //
     zdbfs_syscall("unlink", "parent %lu, name: %s", parent, name);
+    zdbfs_log(req, "unlink: parent %ld, file: %s\n", parent, name);
 
     // fetch parent directory
     if(!(inode = zdbfs_inode_fetch(req, parent)))
@@ -722,6 +801,7 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
     // FIXME: no forget support
     //
     zdbfs_syscall("rmdir", "parent %lu, name: %s", parent, name);
+    zdbfs_log(req, "rmdir: %ld/%s\n", parent, name);
 
     if(!(inode = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
@@ -762,6 +842,7 @@ static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char
     int linkinfo;
 
     zdbfs_syscall("rename", "%lu, name: %s -> name: %s", parent, name, newname);
+    zdbfs_log(req, "rename: %ld: %s -> %s\n", parent, name, newname);
 
     if(!(directory = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
@@ -821,6 +902,7 @@ static void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *nam
         return zdbfs_fuse_rename_same(req, parent, name, newname, flags);
 
     zdbfs_syscall("rename", "%lu, name: %s -> %lu, name: %s", parent, name, newparent, newname);
+    zdbfs_log(req, "rename: %ld/%s -> %lu/%s\n", parent, name, newparent, newname);
 
     // first checking old and new inodes
     if(!(old = zdbfs_inode_fetch(req, parent)))
