@@ -65,6 +65,11 @@ ts=hello            temporary namespace password (mandatory)
 
 nocache             disable runtime cache (for debug purpose)
 autons              try to create required namespace on runtime
+background          run in background when filesystem is ready
+logfile=(not set)   write operations to specified logfile
+                    note: this make lot of resolv request and can
+                    reduce performance, this could generate large logfile
+                    aswell if you do lot of operations
 ```
 
 # Quick Setup
