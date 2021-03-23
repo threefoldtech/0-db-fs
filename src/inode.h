@@ -51,4 +51,6 @@
     uint32_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, uint32_t ino);
     uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t ino);
     uint32_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint32_t ino);
+
+    char *zdbfs_inode_resolv(fuse_req_t req, fuse_ino_t target, const char *name);
 #endif

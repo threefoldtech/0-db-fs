@@ -1012,4 +1012,67 @@ int zdbfs_inode_init(zdbfs_t *fs) {
     return 0;
 }
 
+// TODO: improve. this is really dirty, but only used for log
+//
+//       this can reduce performance due to massive query just
+//       for logging
+//
+//       this function does a reverse lookup based from an inode
+//       to build the full path, inode (target) needs to be a directory
+//
+//       there is no way to know from an inode file, it's path, this could
+//       be anything since hardlinks points to same inode etc.
+char *zdbfs_inode_resolv(fuse_req_t req, fuse_ino_t target, const char *name) {
+    char **paths = calloc(sizeof(char *), 256);
+    int index = 1;
+    fuse_ino_t parent = target;
 
+    if(target == 1)
+        return strdup("/");
+
+    while(target > 1) {
+        zdb_inode_t *inode = NULL;
+
+        if(!(inode = zdbfs_inode_fetch(req, parent))) {
+            zdbfs_debug("[-] resolv: could not fetch inode %lu, stopping\n", parent);
+            free(paths);
+            return strdup("");
+        }
+
+        // checking if this inode is a directory
+        if(!S_ISDIR(inode->mode)) {
+            zdbfs_debug("[-] resolve: %lu: not a directory, skipping\n", parent);
+            // zdbfs_inode_free(inode);
+            free(paths);
+            return strdup("");
+        }
+
+        zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+
+        for(uint32_t i = 0; i < dir->length; i++) {
+            if(dir->entries[i]->ino == target) {
+                paths[index++] = strdup(dir->entries[i]->name);
+                target = parent;
+                break;
+            }
+        }
+
+        parent = dir->entries[0]->ino;
+        // zdbfs_inode_free(inode);
+    }
+
+    char *path = calloc(sizeof(char), 1024);
+    int len = 0;
+
+    for(int i = index - 1; i > 0; i--) {
+        len += sprintf(path + len, "/%s", paths[i]);
+        free(paths[i]);
+    }
+
+    if(name)
+        sprintf(path + len, "/%s", name);
+
+    free(paths);
+
+    return path;
+}

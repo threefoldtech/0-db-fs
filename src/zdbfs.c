@@ -88,64 +88,25 @@ void zdbd_fulldump(void *_data, size_t len) {
 //
 // general helpers
 //
-
-// FIXME: this is really dirty, but only used for log
-//        this is not a critical feature, but please fix me
-//
-//        this function does a reverse lookup based from an inode
-//        to build the full path
-char *zdbfs_resolve(fuse_req_t req, fuse_ino_t target, const char *name) {
-    char **paths = calloc(sizeof(char *), 256);
-    int index = 1;
-    fuse_ino_t parent = target;
-
-    while(target > 1) {
-        zdb_inode_t *inode = NULL;
-
-        if(!(inode = zdbfs_directory_fetch(req, parent))) {
-            free(paths);
-            // FIXME: crash on non dir, req is reset by zdbfs_directory_fetch
-            return strdup("<directory>");
-        }
-
-        zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-
-        for(uint32_t i = 0; i < dir->length; i++) {
-            if(dir->entries[i]->ino == target) {
-                paths[index++] = strdup(dir->entries[i]->name);
-                target = parent;
-                break;
-            }
-        }
-
-        parent = dir->entries[0]->ino;
-        zdbfs_inode_free(inode);
-    }
-
-    char *path = calloc(sizeof(char), 1024);
-    int len = 0;
-
-    for(int i = index - 1; i > 0; i--) {
-        len += sprintf(path + len, "/%s", paths[i]);
-        free(paths[i]);
-    }
-
-    if(name)
-        sprintf(path + len, "/%s", name);
-
-    free(paths);
-
-    return path;
+int zdbfs_log_enabled(fuse_req_t req) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    return (fs->logfd != NULL);
 }
 
-void zdbfs_log(fuse_req_t req, const char *fmt, ...) {
+void zdbfs_log(fuse_req_t req, char *call, const char *fmt, ...) {
     zdbfs_t *fs = fuse_req_userdata(req);
     va_list args;
     time_t timestamp = time(NULL);
+    struct tm *ptime = localtime(&timestamp);
+    char datestr[128];
 
     va_start(args, fmt);
-    fprintf(fs->logfd, "%ld: ", timestamp);
+
+    strftime(datestr, sizeof(datestr), "%Y-%m-%d %H:%M:%S", ptime);
+    fprintf(fs->logfd, "%s [%s] ", datestr, call);
     vfprintf(fs->logfd, fmt, args);
+    fprintf(fs->logfd, "\n");
+
     va_end(args);
 }
 
