@@ -578,7 +578,6 @@ zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     // checking if this inode is a directory
     if(!S_ISDIR(inode->mode)) {
         zdbfs_debug("[-] directory: %lu: not a directory\n", ino);
-        zdbfs_inode_free(inode);
         fuse_reply_err(req, ENOTDIR);
         return NULL;
     }
