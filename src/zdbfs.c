@@ -34,6 +34,7 @@
 // error case
 //
 #define volino __attribute__((cleanup(__cleanup_inode)))
+#define volstr __attribute__((cleanup(__cleanup_malloc)))
 
 void __cleanup_inode(void *p) {
     zdb_inode_t *x = * (zdb_inode_t **) p;
@@ -42,6 +43,11 @@ void __cleanup_inode(void *p) {
 
     if(x->ino == 0)
         zdbfs_inode_free(x);
+}
+
+void __cleanup_malloc(void *p) {
+    void *x = * (void **) p;
+    free(x);
 }
 
 //
@@ -82,6 +88,28 @@ void zdbd_fulldump(void *_data, size_t len) {
 //
 // general helpers
 //
+int zdbfs_log_enabled(fuse_req_t req) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    return (fs->logfd != NULL);
+}
+
+void zdbfs_log(fuse_req_t req, char *call, const char *fmt, ...) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+    va_list args;
+    time_t timestamp = time(NULL);
+    struct tm *ptime = localtime(&timestamp);
+    char datestr[128];
+
+    va_start(args, fmt);
+
+    strftime(datestr, sizeof(datestr), "%Y-%m-%d %H:%M:%S", ptime);
+    fprintf(fs->logfd, "%s [%s] ", datestr, call);
+    vfprintf(fs->logfd, fmt, args);
+    fprintf(fs->logfd, "\n");
+
+    va_end(args);
+}
+
 void dies(char *help, char *value) {
     fprintf(stderr, "[-] %s: %s\n", help, value);
     exit(EXIT_FAILURE);
@@ -201,6 +229,11 @@ static void zdbfs_fuse_create(fuse_req_t req, fuse_ino_t parent, const char *nam
 
     zdbfs_syscall("create", "parent: %ld, name: %s", parent, name);
 
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, parent, name);
+        zdbfs_log(req, "create", "%s [mode %o]", path, mode);
+    }
+
     if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
 
@@ -226,6 +259,11 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
     volino zdb_inode_t *newdir = NULL;
 
     zdbfs_syscall("mkdir", "parent: %ld, name: %s", parent, name);
+
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, parent, name);
+        zdbfs_log(req, "mkdir", "%s [mode %o]", path, mode);
+    }
 
     if(!(inode = zdbfs_directory_fetch(req, parent)))
         return;
@@ -254,6 +292,11 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     off_t limit = 0;
 
     zdbfs_syscall("readdir", "ino: %lu, size: %lu, offset: %ld", ino, size, off);
+
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, ino, NULL);
+        zdbfs_log(req, "readdir", "%s", path);
+    }
 
     if(!(inode = zdbfs_directory_fetch(req, ino))) {
         printf("FAILED\n");
@@ -318,6 +361,10 @@ static void zdbfs_fuse_open(fuse_req_t req, fuse_ino_t ino, struct fuse_file_inf
     volino zdb_inode_t *inode = NULL;
 
     zdbfs_syscall("open", "ino %lu: request", ino);
+
+    if(zdbfs_log_enabled(req)) {
+        zdbfs_log(req, "open", "inode %ld", ino);
+    }
 
     if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
@@ -598,6 +645,11 @@ static void zdbfs_fuse_symlink(fuse_req_t req, const char *link, fuse_ino_t pare
 
     zdbfs_syscall("symlink", "ino %lu/%s -> %s", parent, name, link);
 
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, parent, name);
+        zdbfs_log(req, "symlink", "%s -> %s", path, link);
+    }
+
     // fetching original inode information
     if(!(directory = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
@@ -641,6 +693,11 @@ static void zdbfs_fuse_link(fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent
 
     zdbfs_syscall("link", "ino %lu -> %lu, %s", ino, newparent, newname);
 
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, newparent, newname);
+        zdbfs_log(req, "link", "%lu -> %s", ino, path);
+    }
+
     // fetching original inode information
     if(!(inode = zdbfs_inode_fetch(req, ino)))
         return zdbfs_fuse_error(req, ENOENT, ino);
@@ -681,6 +738,11 @@ static void zdbfs_fuse_unlink(fuse_req_t req, fuse_ino_t parent, const char *nam
     // FIXME: no forget support
     //
     zdbfs_syscall("unlink", "parent %lu, name: %s", parent, name);
+
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, parent, name);
+        zdbfs_log(req, "unlink", "%s", path);
+    }
 
     // fetch parent directory
     if(!(inode = zdbfs_inode_fetch(req, parent)))
@@ -723,6 +785,11 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
     //
     zdbfs_syscall("rmdir", "parent %lu, name: %s", parent, name);
 
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path = zdbfs_inode_resolv(req, parent, NULL);
+        zdbfs_log(req, "rmdir", "%s", path);
+    }
+
     if(!(inode = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
 
@@ -762,6 +829,10 @@ static void zdbfs_fuse_rename_same(fuse_req_t req, fuse_ino_t parent, const char
     int linkinfo;
 
     zdbfs_syscall("rename", "%lu, name: %s -> name: %s", parent, name, newname);
+
+    if(zdbfs_log_enabled(req)) {
+        zdbfs_log(req, "rename", "%ld: %s -> %s", parent, name, newname);
+    }
 
     if(!(directory = zdbfs_inode_fetch(req, parent)))
         return zdbfs_fuse_error(req, ENOENT, parent);
@@ -821,6 +892,12 @@ static void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *nam
         return zdbfs_fuse_rename_same(req, parent, name, newname, flags);
 
     zdbfs_syscall("rename", "%lu, name: %s -> %lu, name: %s", parent, name, newparent, newname);
+
+    if(zdbfs_log_enabled(req)) {
+        volstr char *path1 = zdbfs_inode_resolv(req, parent, name);
+        volstr char *path2 = zdbfs_inode_resolv(req, newparent, newname);
+        zdbfs_log(req, "rename", "%s -> %s", path1, path2);
+    }
 
     // first checking old and new inodes
     if(!(old = zdbfs_inode_fetch(req, parent)))
@@ -898,7 +975,6 @@ static void zdbfs_fuse_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_
     zdbfs_cache_release(req, inocache);
     // zdbfs_inode_dump(inocache->inode);
 
-    // zdbfs_inode_free(inode);
     fuse_reply_err(req, 0);
 }
 
@@ -1073,8 +1149,12 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
             // zdbfs_cache_stats(fs);
             size_t flushed = zdbfs_cache_sync(fs);
 
-            if(flushed > 0)
+            if(flushed > 0) {
                 zdbfs_debug("[+] cache: flushed %lu inodes\n", flushed);
+
+                if(fs->logfd)
+                    fflush(fs->logfd);
+            }
 
             // reset request counter
             proceed = 0;
