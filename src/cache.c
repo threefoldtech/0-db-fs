@@ -145,9 +145,14 @@ static int zdbfs_cache_block_linear_flush(zdbfs_t *fs, inocache_t *cache) {
             continue;
 
         uint32_t blockid = zdbfs_inode_block_get(cache->inode, block->blockidx);
+        uint32_t res;
 
-        if(zdb_set(fs->datactx, blockid, block->data, block->blocksize) != blockid) {
-            dies("cache linear delegate", "wrong write\n");
+        zdbfs_lowdebug("cache: delegate: flushing: block %u", blockid);
+
+        if((res = zdb_set(fs->datactx, blockid, block->data, block->blocksize) != blockid)) {
+            zdbfs_lowdebug("cache: delegate: flushing: response %u, %d", res, zdb_errno);
+            warns("cache linear delegate", "wrong write");
+            continue;
         }
 
         zdbfs_lowdebug("cache: delegate: flushed datablock: %u", blockid);

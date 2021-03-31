@@ -621,10 +621,8 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
 
         // send block to the backend, this can be a new block or an existing
         // block updated
-        if((blockid = zdbfs_inode_block_store(req, inode, ino, block, buffer, blocksize)) == 0) {
-            // dies("write", "cannot write block to backend");
-            printf("inode store returned zero\n");
-        }
+        if((blockid = zdbfs_inode_block_store(req, inode, ino, block, buffer, blocksize)) == 0)
+            return zdbfs_fuse_error(req, zdb_errno, ino);
 
         // jump to the next chunk to write
         sent += writepass;
@@ -634,9 +632,8 @@ static void zdbfs_fuse_write(fuse_req_t req, fuse_ino_t ino, const char *buf, si
         inode->size = off + size;
 
     zdbfs_debug("[+] write: all blocks written (%lu bytes)\n", sent);
-    if(zdbfs_inode_store_metadata(req, inode, ino) == 0) {
-        dies("write", "could not update inode blocks");
-    }
+    if(zdbfs_inode_store_metadata(req, inode, ino) == 0)
+        return zdbfs_fuse_error(req, zdb_errno, 0);
 
     fuse_reply_write(req, sent);
 }

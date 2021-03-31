@@ -1,6 +1,8 @@
 #ifndef ZDBFS_ZDB_H
     #define ZDBFS_ZDB_H
 
+    extern int zdb_errno;
+
     typedef struct zdb_nsinfo_t {
         size_t entries;
         size_t datasize;

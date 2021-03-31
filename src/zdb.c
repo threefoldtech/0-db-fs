@@ -17,6 +17,9 @@
 #include "zdb.h"
 #include "inode.h"
 
+// global zdb errno propagation
+int zdb_errno = 0;
+
 int zdb_select(redisContext *remote, char *namespace, char *password) {
     const char *argv[] = {"SELECT", namespace, password};
     int argc = (password) ? 3 : 2;
@@ -213,6 +216,11 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
 
     if(reply->type == REDIS_REPLY_ERROR) {
         zdbfs_error("zdb: set: error: %s", reply->str);
+        zdb_errno = EIO;
+
+        if(strcmp(reply->str, "Namespace definitely full") == 0)
+            zdb_errno = ENOSPC;
+
         freeReplyObject(reply);
         return 0;
     }
