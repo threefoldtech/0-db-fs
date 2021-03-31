@@ -882,7 +882,8 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
         cache->blocksize = 0;
         */
 
-        blc = zdbfs_cache_block_add(req, cache, block);
+        if(!(blc = zdbfs_cache_block_add(req, cache, block)))
+            return 0;
     }
 
     // at this point, we are sure block is available

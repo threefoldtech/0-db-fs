@@ -147,7 +147,7 @@ static int zdbfs_cache_block_linear_flush(zdbfs_t *fs, inocache_t *cache) {
         uint32_t blockid = zdbfs_inode_block_get(cache->inode, block->blockidx);
         uint32_t res;
 
-        zdbfs_lowdebug("cache: delegate: flushing: block %u", blockid);
+        zdbfs_lowdebug("cache: delegate: flushing: block %u [%lu/%lu]", blockid, i, cache->blocks);
 
         if((res = zdb_set(fs->datactx, blockid, block->data, block->blocksize) != blockid)) {
             zdbfs_lowdebug("cache: delegate: flushing: response %u, %d", res, zdb_errno);
@@ -324,7 +324,9 @@ void zdbfs_cache_block_hit(blockcache_t *block) {
 blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t blockidx) {
     if(cache->blonline + 1 > ZDBFS_BLOCKS_CACHE_LIMIT) {
         zdbfs_lowdebug("cache: too many blocks online [%lu], offloading", cache->blonline);
-        zdbfs_cache_block_delegate(req, cache);
+
+        if(zdbfs_cache_block_delegate(req, cache) == 0)
+            return NULL;
     }
 
     cache->blocks += 1;
