@@ -851,9 +851,8 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
         zdbfs_debug("[+] inode: block: store: inode not in cache, direct write\n");
 
         // no cache available, force flush
-        if((blockid = zdb_set(fs->datactx, blockid, buffer, buflen)) == 0) {
-            dies("write", "cannot write block to backend");
-        }
+        if((blockid = zdb_set(fs->datactx, blockid, buffer, buflen)) == 0)
+            return 0;
 
         // force block update
         //
@@ -894,10 +893,8 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
 
     if(blockid == 0) {
         // attributing a blockid to that block
-        if((blockid = zdb_set(fs->datactx, 0, "", 0)) == 0) {
-            // FIXME ??
-            dies("write", "cannot write empty block to backend");
-        }
+        if((blockid = zdb_set(fs->datactx, 0, "", 0)) == 0)
+            return 0;
 
         zdbfs_debug("[+] block: store: new blockid: %u\n", blockid);
     }

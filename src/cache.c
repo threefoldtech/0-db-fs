@@ -210,7 +210,8 @@ static int zdbfs_cache_block_delegate(fuse_req_t req, inocache_t *cache) {
 
     // move that block in temporary table
     if((oldest->offid = zdb_set(fs->tempctx, oldest->offid, oldest->data, oldest->blocksize)) == 0) {
-        dies("cache delegate", "wrong write\n");
+        warns("cache delegate", "wrong write");
+        return 0;
     }
 
     zdbfs_lowdebug("cache: delegate: moved temporarily: %u", oldest->offid);
@@ -515,7 +516,8 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
         zdbfs_lowdebug("cache: release: flushing block %lu [hits %lu]", i, blc->hits);
 
         if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
-            dies("cache flush", "wrong write\n");
+            warns("cache flush", "wrong write");
+            continue;
         }
 
         zdbfs_cache_block_free_data(blc);
@@ -559,7 +561,8 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
         zdbfs_lowdebug("cache: inode not linked anymore: %u, flushing", cache->inoid);
 
         if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
-            dies("cache release", "could not write to backend\n");
+            warns("cache release", "could not write to backend");
+            return;
         }
 
         zdbfs_cache_block_release(fs, cache);
@@ -605,7 +608,8 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
             zdbfs_lowdebug("cache: inode cache expired: %u, flushing", cache->inoid);
 
             if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
-                dies("cache", "could not write inode in the backend\n");
+                warns("cache", "could not write inode in the backend");
+                continue;
             }
 
             // count how many entries were flushed
@@ -639,7 +643,8 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
 
                 // flush still referenced cache entries
                 if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
-                    dies("cache", "could not write inode in the backend\n");
+                    warns("cache", "could not write inode in the backend");
+                    continue;
                 }
 
                 // count how many entries were flushed

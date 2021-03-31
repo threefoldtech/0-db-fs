@@ -110,8 +110,12 @@ void zdbfs_log(fuse_req_t req, char *call, const char *fmt, ...) {
     va_end(args);
 }
 
-void dies(char *help, char *value) {
+void warns(char *help, char *value) {
     fprintf(stderr, "[-] %s: %s\n", help, value);
+}
+
+void dies(char *help, char *value) {
+    warns(help, value);
     exit(EXIT_FAILURE);
 }
 

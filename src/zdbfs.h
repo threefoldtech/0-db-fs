@@ -212,5 +212,6 @@
 
     } zdb_reply_t;
 
+    void warns(char *help, char *value);
     void dies(char *help, char *value);
 #endif
