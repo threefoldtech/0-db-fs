@@ -221,6 +221,9 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         if(strcmp(reply->str, "Namespace definitely full") == 0)
             zdb_errno = ENOSPC;
 
+        if(strcmp(reply->str, "No space left on this namespace") == 0)
+            zdb_errno = ENOSPC;
+
         freeReplyObject(reply);
         return 0;
     }

@@ -498,9 +498,9 @@ inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode) {
 #endif
 }
 
-static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
+static int zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
     if(cache->blocks == 0)
-        return;
+        return 1;
 
     zdbfs_debug("[+] cache: release: blocks available, flushing\n");
 
@@ -509,7 +509,7 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
 
         if(blc->online == ZDBFS_BLOCK_OFFLINE)
             if(zdbfs_cache_block_restore(fs, cache, blc))
-                return;
+                return 1;
 
         if(blc->online == ZDBFS_BLOCK_FLUSHED) {
             zdbfs_lowdebug("cache: release: block already flushed: %u", blc->blockidx);
@@ -521,8 +521,8 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
         zdbfs_lowdebug("cache: release: flushing block %lu [hits %lu]", i, blc->hits);
 
         if(zdb_set(fs->datactx, blockid, blc->data, blc->blocksize) != blockid) {
-            warns("cache flush", "wrong write");
-            continue;
+            warns("cache flush", "blockid mismatch");
+            return 0;
         }
 
         zdbfs_cache_block_free_data(blc);
@@ -530,6 +530,8 @@ static void zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
 
     // free all blocks
     zdbfs_cache_block_free(cache);
+
+    return cache->blocks;
 }
 
 void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
@@ -550,12 +552,12 @@ void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
     free(cache);
 }
 
-void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
+int zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
     zdbfs_t *fs = fuse_req_userdata(req);
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
-        return;
+        return 1;
 
     zdbfs_lowdebug("cache: release inode: %u", cache->inoid);
 
@@ -567,13 +569,15 @@ void zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
 
         if(zdbfs_inode_store_backend(fs->metactx, cache->inode, cache->inoid) != cache->inoid) {
             warns("cache release", "could not write to backend");
-            return;
+            return 0;
         }
 
-        zdbfs_cache_block_release(fs, cache);
+        return zdbfs_cache_block_release(fs, cache);
         // zdbfs_cache_drop(req, cache);
         // FIXME ^ better memory usage but slower
     }
+
+    return 1;
 }
 
 size_t zdbfs_cache_sync(zdbfs_t *fs) {
@@ -656,7 +660,8 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
                 flushed += 1;
             }
 
-            zdbfs_cache_block_release(fs, cache);
+            if(zdbfs_cache_block_release(fs, cache) == 0)
+                return flushed;
 
             // final unallocation
             zdbfs_inode_free(cache->inode);

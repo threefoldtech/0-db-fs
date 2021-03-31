@@ -973,7 +973,9 @@ static void zdbfs_fuse_release(fuse_req_t req, fuse_ino_t ino, struct fuse_file_
     }
 
     // release
-    zdbfs_cache_release(req, inocache);
+    if(zdbfs_cache_release(req, inocache) == 0)
+        return zdbfs_fuse_error(req, zdb_errno, ino);
+
     // zdbfs_inode_dump(inocache->inode);
 
     fuse_reply_err(req, 0);
