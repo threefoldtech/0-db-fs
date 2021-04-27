@@ -1289,6 +1289,9 @@ int main(int argc, char *argv[]) {
     // free blocks and inodes cache
     zdbfs_init_free(&zdbfs, &fopts);
 
+    // flag filesystem not in use anymore
+    zdbfs_inode_init_release(&zdbfs);
+
     // disconnect redis
     zdbfs_zdb_free(&zdbfs);
 
