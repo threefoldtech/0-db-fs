@@ -52,5 +52,7 @@
     uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t ino);
     uint32_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint32_t ino);
 
+    int zdbfs_inode_init_release(zdbfs_t *fs);
+
     char *zdbfs_inode_resolv(fuse_req_t req, fuse_ino_t target, const char *name);
 #endif

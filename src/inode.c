@@ -1063,23 +1063,19 @@ int zdbfs_inode_init_release(zdbfs_t *fs) {
     zdbfs_debug("[+] filesystem: release in use flag\n");
 
     if(!(reply = zdb_get(fs->metactx, 0))) {
-        printf("wtf ?\n");
+        zdbfs_error("[-] filesystem: release: %s\n", "could not fetch header entry");
         return 1;
     }
 
     if(reply->length != sizeof(zdbfs_header_t)) {
-        printf("wtf 2 ?\n");
+        zdbfs_error("[-] filesystem: release: %s\n", "wrong header size");
         return 1;
     }
 
-    printf("%s\n", header.magic);
-    printf("%x\n", header.flags);
-
     memcpy(&header, reply->value, sizeof(header));
 
+    // drop in use flags
     header.flags &= ~ZDBFS_FLAGS_IN_USE;
-
-    printf("%x\n", header.flags);
 
     if(!(zreply = redisCommand(fs->metactx, "SET %b %b", NULL, 0, &header, sizeof(zdbfs_header_t)))) {
         zdbfs_critical("inode: init: release: %s", fs->metactx->errstr);
