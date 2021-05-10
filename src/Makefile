@@ -10,8 +10,12 @@ all: $(EXEC)
 release: CFLAGS += -DRELEASE -O2 -march=native
 release: clean $(EXEC)
 
+# production: CFLAGS += -DRELEASE -O2
+# production: LDFLAGS = -Wl,-Bstatic -lhiredis -lunwind -Wl,-Bdynamic -rdynamic -lfuse3 -lpthread -ldl -llzma
+#production: all
+
 production: CFLAGS += -DRELEASE -O2
-production: LDFLAGS = -Wl,-Bstatic -lhiredis -lunwind -Wl,-Bdynamic -rdynamic -lfuse3 -lpthread -ldl -llzma
+production: LDFLAGS = -rdynamic -static -lhiredis -lunwind -lfuse3 -lpthread -ldl -llzma
 production: all
 
 $(EXEC): $(OBJ)
