@@ -973,7 +973,8 @@ int zdbfs_inode_init(zdbfs_t *fs) {
     zdb_reply_t *reply;
     zdbfs_header_t header = {
         .version = ZDBFS_INTERNAL_VERSION,
-        .flags = ZDBFS_FLAGS_IN_USE,
+        // .flags = ZDBFS_FLAGS_IN_USE,
+        .flags = 0,
         .size = fs->fssize,
     };
 
