@@ -34,6 +34,8 @@ completed or waiting some time before flushing pending changes to the backend.
 # Dependencies
 
 Only `libfuse3` and `hiredis` are required to build `zdbfs`, on Linux.
+There is for now a hard dependency to `libunwind` for debug purpose. Could become optional later.
+
 Note that, only `gcc` or `clang` are supported as C compiler.
 
 # Build
