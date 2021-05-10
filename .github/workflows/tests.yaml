@@ -9,7 +9,7 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget libunwind-dev
+        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev wget libunwind-dev
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
 
     - name: Checkout development code
@@ -84,7 +84,7 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev redis-tools wget libunwind-dev
+        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev wget libunwind-dev
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
 
     - name: Checkout development code
