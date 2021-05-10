@@ -12,9 +12,30 @@ jobs:
       - name: Checkout the repository
         uses: actions/checkout@master
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          apk add alpine-sdk
+          apk add alpine-sdk hiredis-dev linux-headers curl \
+              libunwind-dev xz-dev meson ninja cmake udev git \
+              xz libunwind-static
+
+      - name: Download libfuse dependency
+        run: |
+          wget https://github.com/libfuse/libfuse/releases/download/fuse-3.10.2/fuse-3.10.2.tar.xz
+          tar -xvf fuse-3.10.2.tar.xz
+ 
+      - name: Build static libfuse
+        run: |
+          cd fuse-3.10.2 
+          mkdir build
+          cd build
+          meson .. --prefix /usr -Dudevrulesdir=/etc/udev/rules.d --default-library static
+          ninja
+          ninja install
+
+      - name: Build production 0-db-fs
+        run: |
+          make production
+
 
   generate:
     name: Create release artifacts
