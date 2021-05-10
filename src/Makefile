@@ -3,7 +3,7 @@ SRC = $(wildcard *.c)
 OBJ = $(SRC:.c=.o)
 
 CFLAGS += -g -std=gnu99 -O0 -W -Wall -Wextra -Wno-implicit-fallthrough -I/usr/include/fuse3
-LDFLAGS += -Wl,-Bstatic -lunwind -Wl,-Bdynamic -rdynamic -lfuse3 -lpthread -lhiredis -ldl
+LDFLAGS += -Wl,-Bstatic -lunwind -Wl,-Bdynamic -rdynamic -lfuse3 -lpthread -lhiredis -ldl -llzma
 
 all: $(EXEC)
 

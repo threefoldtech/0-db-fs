@@ -37,6 +37,7 @@ static struct fuse_opt zdbfs_opts[] = {
     {"autons",     zdb_opt_field(autons), 0},
     {"background", zdb_opt_field(background), 0},
     {"logfile=%s", zdb_opt_field(logfile), 0},
+    FUSE_OPT_END
 };
 
 int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opts *fopts) {
