@@ -1,45 +1,47 @@
 name: Build release
-on:  
+on:
   release:
     types: [created]
 jobs:
-  generate:
-    name: Create release artifacts
-    runs-on: ubuntu-18.04
+  static:
+    name: Create release artifact (static)
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.13
     steps:
       - name: Checkout the repository
         uses: actions/checkout@master
 
-      - name: Install dependencies
+      - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y git build-essential wget pkg-config \
-            udev libudev-dev meson libhiredis-dev
+          apk add alpine-sdk hiredis-dev linux-headers \
+              libunwind-dev xz-dev meson ninja cmake udev \
+              xz libunwind-static
 
-      - name: Download libfuse3
+      - name: Download libfuse dependency
         run: |
           wget https://github.com/libfuse/libfuse/releases/download/fuse-3.10.2/fuse-3.10.2.tar.xz
           tar -xf fuse-3.10.2.tar.xz
-
-      - name: Build libfuse3
+ 
+      - name: Build static libfuse
         run: |
-          cd fuse-3.10.2
+          cd fuse-3.10.2 
           mkdir build
           cd build
-          meson .. --prefix /usr
+          meson .. --prefix /usr -Dudevrulesdir=/etc/udev/rules.d --default-library static
           ninja
-          sudo ninja install
+          ninja install
 
-      - name: Building zdbfs
+      - name: Build production 0-db-fs
         run: |
           make production
-          version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
-          cp zdbfs zdbfs-${version}-amd64-linux-gnu
+          version=$(grep ZDBFS_VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
+          cp zdbfs zdbfs-${version}-amd64-linux-static
 
       - name: Upload the artifacts
         uses: skx/github-action-publish-binaries@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          args: 'zdbfs-*-linux-gnu'
+          args: 'zdbfs-*-linux-static'
 

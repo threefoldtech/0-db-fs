@@ -14,6 +14,7 @@
 #include "inode.h"
 #include "cache.h"
 #include "zdb.h"
+#include "system.h"
 
 //
 // cache statistics

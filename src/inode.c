@@ -16,6 +16,7 @@
 #include "zdb.h"
 #include "inode.h"
 #include "cache.h"
+#include "system.h"
 
 void zdbfs_inode_dump(zdb_inode_t *inode) {
     printf("[+] --- inode dump\n");
@@ -908,6 +909,59 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
     return blockid;
 }
 
+static int zdbfs_header_check(uint8_t *buffer, size_t bufsize, char *magic) {
+    zdbfs_header_t source;
+
+    // if we don't have enough data for magic and version
+    // for sure it's invalid
+    if(bufsize < sizeof(source.magic) + sizeof(source.version)) {
+        printf(">> not enough data for our header basic\n");
+        return 1;
+    }
+
+    // copy magic and version from buffer
+    memcpy(source.magic, buffer, sizeof(source.magic));
+    memcpy(&source.version, buffer + sizeof(source.magic), sizeof(source.version));
+
+    if(strncmp(source.magic, magic, strlen(magic)) != 0) {
+        zdbfs_critical("header: invalid magic [%*s / %s]", (int) sizeof(source.magic), source.magic, magic);
+        return 1;
+    }
+
+    if(source.version != ZDBFS_INTERNAL_VERSION) {
+        zdbfs_critical("unexpected version from header [%u / %u]\n", source.version, ZDBFS_INTERNAL_VERSION);
+        return 1;
+    }
+
+    zdbfs_debug("[+] filesystem: header: basic information valid\n");
+
+    return 0;
+}
+
+static int zdbfs_inode_prepare_namespace(redisContext *ctx, zdbfs_header_t *header, char *magic) {
+    redisReply *zreply;
+    int expected = 0;
+
+    // create initial entry
+    memcpy(header->magic, magic, sizeof(header->magic));
+
+    // cannot use zdb_set because id 0 is special
+    if(!(zreply = redisCommand(ctx, "SET %b %b", NULL, 0, header, sizeof(zdbfs_header_t)))) {
+        zdbfs_critical("inode: init: %s", ctx->errstr);
+        return 1;
+    }
+
+    if(memcmp(zreply->str, &expected, zreply->len) != 0) {
+        char replied[32];
+        sprintf(replied, "0x%x", zreply->str[0]);
+        dies("initializer: initial id mismatch (expected 0x00)", replied);
+    }
+
+    freeReplyObject(zreply);
+
+    return 0;
+}
+
 // first initialization of the fs
 //
 // entry 0 will be metadata about information regarding this
@@ -917,95 +971,118 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t in
 // be empty in a first set
 int zdbfs_inode_init(zdbfs_t *fs) {
     zdb_reply_t *reply;
-    char *mmsg = "zdbfs version 0.1 debug header";
-    char *bmsg = "zdbfs block namespace";
-    char *tmsg = "zdbfs temporary namespace";
-    uint32_t expected = 0;
+    zdbfs_header_t header = {
+        .version = ZDBFS_INTERNAL_VERSION,
+        // .flags = ZDBFS_FLAGS_IN_USE,
+        .flags = 0,
+        .size = fs->fssize,
+    };
 
     zdbfs_debug("[+] filesystem: checking backend\n");
 
-    // checking if entry 0 exists
+    // checking if metadata entry (inode) 0 exists
     if((reply = zdb_get(fs->metactx, 0))) {
-        if(strncmp((char *) reply->value, "zdbfs ", 6) == 0) {
-            zdbfs_debug("[+] filesystem: metadata already contains a valid filesystem\n");
-            zdbfs_zdb_reply_free(reply);
-            return 0;
+        if(zdbfs_header_check(reply->value, reply->length, "ZDBFSM") == 1) {
+            zdbfs_critical("invalid header: %s", "metadata");
+            return 1;
         }
+
+        memcpy(&header, reply->value, sizeof(header));
+
+        // we only check for metadata in use flag
+        if(header.flags & ZDBFS_FLAGS_IN_USE) {
+            zdbfs_debug("[-] filesystem: flag already in use set (ignore for now)\n");
+            return 1;
+        }
+
+        zdbfs_debug("[+] filesystem: metadata contains a valid filesystem\n");
+        zdbfs_zdb_reply_free(reply);
+
+    } else {
+        zdbfs_debug("[+] filesystem: creating metadata header\n");
+        zdbfs_inode_prepare_namespace(fs->metactx, &header, "ZDBFSM");
     }
-
-    //
-    // create initial entry
-    //
-    redisReply *zreply;
-
-    // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->metactx, "SET %b %s", NULL, 0, mmsg))) {
-        zdbfs_critical("inode: init: metadata: %s", fs->metactx->errstr);
-        return 1;
-    }
-
-    if(memcmp(zreply->str, &expected, zreply->len) != 0)
-        dies("could not create initial message", zreply->str);
-
-    freeReplyObject(zreply);
 
 
     //
     // create initial root directory (if not there)
     //
-    if((reply = zdb_get(fs->metactx, 1))) {
+    if(!(reply = zdb_get(fs->metactx, 1))) {
+        zdbfs_debug("[+] filesystem: creating root directory\n");
+
+        zdb_inode_t *inode = zdbfs_inode_new_dir(1, 0755);
+        if(zdbfs_inode_store_backend(fs->metactx, inode, 0) != 1)
+            dies("could not create root directory", "xx");
+
+        zdbfs_inode_free(inode);
+
+    } else {
         zdbfs_debug("[+] filesystem: metadata already contains a valid root directory\n");
         zdbfs_zdb_reply_free(reply);
-        return 0;
     }
-
-    zdb_inode_t *inode = zdbfs_inode_new_dir(1, 0755);
-    if(zdbfs_inode_store_backend(fs->metactx, inode, 0) != 1)
-        dies("could not create root directory", zreply->str);
-
-    zdbfs_inode_free(inode);
 
     //
     // create initial block
     //
     if((reply = zdb_get(fs->datactx, 0))) {
-        zdbfs_debug("[+] init: data already contains a valid signature\n");
+        if(zdbfs_header_check(reply->value, reply->length, "ZDBFSD") == 1) {
+            zdbfs_critical("invalid header: %s", "data blocks");
+            return 1;
+        }
+
+        zdbfs_debug("[+] filesystem: data contains a valid filesystem\n");
         zdbfs_zdb_reply_free(reply);
-        return 0;
+
+    } else {
+        zdbfs_debug("[+] filesystem: creating data blocks header\n");
+        zdbfs_inode_prepare_namespace(fs->datactx, &header, "ZDBFSD");
     }
 
-    // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->datactx, "SET %b %s", NULL, 0, bmsg))) {
-        zdbfs_critical("zdb: init: datablock: %s", fs->metactx->errstr);
-        return 1;
-    }
-
-    expected = 0;
-    if(memcmp(zreply->str, &expected, zreply->len) != 0)
-        dies("could not create initial data message", zreply->str);
-
-    freeReplyObject(zreply);
-
-    //
-    // create initial temporary entry
-    //
+    // checking if temporary namespace 0 exists
     if((reply = zdb_get(fs->tempctx, 0))) {
-        zdbfs_debug("[+] init: temp already contains a valid signature\n");
+        if(zdbfs_header_check(reply->value, reply->length, "ZDBFST") == 1) {
+            zdbfs_critical("invalid header: %s", "temporary");
+            return 1;
+        }
+
+        zdbfs_debug("[+] filesystem: temporary namespace contains a valid filesystem\n");
         zdbfs_zdb_reply_free(reply);
-        return 0;
+
+    } else {
+        zdbfs_debug("[+] filesystem: creating temporary namespace header\n");
+        zdbfs_inode_prepare_namespace(fs->tempctx, &header, "ZDBFST");
     }
 
-    // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(fs->tempctx, "SET %b %s", NULL, 0, tmsg))) {
-        zdbfs_critical("zdb: init: temporary: %s", fs->metactx->errstr);
+
+    return 0;
+}
+
+int zdbfs_inode_init_release(zdbfs_t *fs) {
+    zdbfs_header_t header;
+    zdb_reply_t *reply;
+    redisReply *zreply;
+
+    zdbfs_debug("[+] filesystem: release in use flag\n");
+
+    if(!(reply = zdb_get(fs->metactx, 0))) {
+        zdbfs_error("[-] filesystem: release: %s\n", "could not fetch header entry");
         return 1;
     }
 
-    expected = 0;
-    if(memcmp(zreply->str, &expected, zreply->len) != 0)
-        dies("could not create initial temp message", zreply->str);
+    if(reply->length != sizeof(zdbfs_header_t)) {
+        zdbfs_error("[-] filesystem: release: %s\n", "wrong header size");
+        return 1;
+    }
 
-    freeReplyObject(zreply);
+    memcpy(&header, reply->value, sizeof(header));
+
+    // drop in use flags
+    header.flags &= ~ZDBFS_FLAGS_IN_USE;
+
+    if(!(zreply = redisCommand(fs->metactx, "SET %b %b", NULL, 0, &header, sizeof(zdbfs_header_t)))) {
+        zdbfs_critical("inode: init: release: %s", fs->metactx->errstr);
+        return 1;
+    }
 
     return 0;
 }

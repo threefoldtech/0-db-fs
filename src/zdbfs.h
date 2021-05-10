@@ -3,6 +3,9 @@
 
     #define ZDBFS_VERSION  "0.1.3"
 
+    // internal version used for metadata header
+    #define ZDBFS_INTERNAL_VERSION  1
+
     #define COLOR_GREY   "\033[30;1m"
     #define COLOR_RED    "\033[31;1m"
     #define COLOR_GREEN  "\033[32;1m"
@@ -194,6 +197,7 @@
         char *logfile;            // global logfile where to log actions
         FILE *logfd;              // log file descriptor
         stats_t stats;            // global statistics
+        uint64_t fssize;          // filesystem maximum size to report
 
         zdbfs_options *opts;
 
@@ -212,6 +216,16 @@
 
     } zdb_reply_t;
 
-    void warns(char *help, char *value);
-    void dies(char *help, char *value);
+    typedef enum zdbfs_flags_t {
+        ZDBFS_FLAGS_IN_USE = 1,
+
+    } zdbfs_flags_t;
+
+    typedef struct zdbfs_header_t {
+        char magic[6];        // magic identifier (eg: ZDBFSM for metadata)
+        uint16_t version;     // version to control if it's usable
+        uint16_t flags;       // flags (see zdbfs_flags_t
+        uint64_t size;        // filesystem size in bytes
+
+    } zdbfs_header_t;
 #endif
