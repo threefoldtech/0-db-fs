@@ -924,16 +924,16 @@ static int zdbfs_header_check(uint8_t *buffer, size_t bufsize, char *magic) {
     memcpy(&source.version, buffer + sizeof(source.magic), sizeof(source.version));
 
     if(strncmp(source.magic, magic, strlen(magic)) != 0) {
-        printf(">> invalid magic [%*s / %s]\n", (int) sizeof(source.magic), source.magic, magic);
+        zdbfs_critical("header: invalid magic [%*s / %s]", (int) sizeof(source.magic), source.magic, magic);
         return 1;
     }
 
     if(source.version != ZDBFS_INTERNAL_VERSION) {
-        printf(">> unexpected version from header [%u / %u]\n", source.version, ZDBFS_INTERNAL_VERSION);
+        zdbfs_critical("unexpected version from header [%u / %u]\n", source.version, ZDBFS_INTERNAL_VERSION);
         return 1;
     }
 
-    printf("<< header basic valid\n");
+    zdbfs_debug("[+] filesystem: header: basic information valid\n");
 
     return 0;
 }
@@ -990,7 +990,7 @@ int zdbfs_inode_init(zdbfs_t *fs) {
 
         // we only check for metadata in use flag
         if(header.flags & ZDBFS_FLAGS_IN_USE) {
-            printf(">> filesystem already in use !\n");
+            zdbfs_debug("[-] filesystem: flag already in use set (ignore for now)\n");
             return 1;
         }
 
