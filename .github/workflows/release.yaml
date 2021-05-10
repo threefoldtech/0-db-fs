@@ -35,7 +35,7 @@ jobs:
       - name: Build production 0-db-fs
         run: |
           make production
-          version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
+          version=$(grep ZDBFS_VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
           cp zdbfs zdbfs-${version}-amd64-linux-static
 
       - name: Upload the artifacts
