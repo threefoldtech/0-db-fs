@@ -1,6 +1,5 @@
 name: Tests and Coverage
- on: [push]
-
+on: [push]
 jobs:
   kernel:
     name: Kernel Build compare
