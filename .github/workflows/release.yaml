@@ -14,14 +14,14 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          apk add alpine-sdk hiredis-dev linux-headers curl \
-              libunwind-dev xz-dev meson ninja cmake udev git \
+          apk add alpine-sdk hiredis-dev linux-headers \
+              libunwind-dev xz-dev meson ninja cmake udev \
               xz libunwind-static
 
       - name: Download libfuse dependency
         run: |
           wget https://github.com/libfuse/libfuse/releases/download/fuse-3.10.2/fuse-3.10.2.tar.xz
-          tar -xvf fuse-3.10.2.tar.xz
+          tar -xf fuse-3.10.2.tar.xz
  
       - name: Build static libfuse
         run: |
@@ -35,6 +35,15 @@ jobs:
       - name: Build production 0-db-fs
         run: |
           make production
+          version=$(grep VERSION src/zdbfs.h | awk '{ print $3 }' | sed s/'"'//g)
+          cp zdbfs zdbfs-${version}-amd64-linux-static
+
+      - name: Upload the artifacts
+        uses: skx/github-action-publish-binaries@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: 'zdbfs-*-linux-static'
 
 
   generate:
