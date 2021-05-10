@@ -11,6 +11,7 @@
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
 #include <errno.h>
+#include <signal.h>
 #include <linux/fs.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
@@ -20,6 +21,9 @@
 #include "zdb.h"
 #include "inode.h"
 #include "cache.h"
+
+#define UNW_LOCAL_ONLY
+#include <libunwind.h>
 
 //
 // volatile inode
@@ -83,6 +87,63 @@ void zdbd_fulldump(void *_data, size_t len) {
     }
 
     printf("\n");
+}
+
+void zdbfs_backtrace() {
+	unw_cursor_t cursor;
+	unw_context_t context;
+
+	// grab the machine context and initialize the cursor
+	if(unw_getcontext(&context) < 0)
+		dies("backtrce", "cannot get local machine state");
+
+	if(unw_init_local(&cursor, &context) < 0)
+		dies("backtrace", "cannot initialize cursor for local unwinding");
+
+	// currently the IP is within backtrace() itself so this loop
+	// deliberately skips the first frame.
+	while(unw_step(&cursor) > 0) {
+		unw_word_t offset, pc;
+		char sym[4096];
+
+		if(unw_get_reg(&cursor, UNW_REG_IP, &pc))
+			dies("backtrace", "cannot read program counter");
+
+		printf("0x%lx: ", pc);
+
+		if(unw_get_proc_name(&cursor, sym, sizeof(sym), &offset) == 0) {
+			printf("(%s+0x%lx)\n", sym, offset);
+
+        } else {
+			printf("[no symbol name found]\n");
+        }
+	}
+}
+
+static int signal_intercept(int signal, void (*function)(int)) {
+    struct sigaction sig;
+    int ret;
+
+    sigemptyset(&sig.sa_mask);
+    sig.sa_handler = function;
+    sig.sa_flags = 0;
+
+    if((ret = sigaction(signal, &sig, NULL)) == -1)
+        zdbfs_sysfatal("sigaction");
+
+    return ret;
+}
+
+static void sighandler(int signal) {
+    switch(signal) {
+        case SIGSEGV:
+            fprintf(stderr, "[-] fatal: segmentation fault\n");
+            zdbfs_backtrace();
+            break;
+        }
+
+    // forward original error code
+    exit(128 + signal);
 }
 
 //
@@ -1228,6 +1289,8 @@ int main(int argc, char *argv[]) {
     zdbfs_t zdbfs;
 
     zdbfs_info("initializing zdbfs v%s", ZDBFS_VERSION);
+
+    signal_intercept(SIGSEGV, sighandler);
 
     if(zdbfs_init_args(&zdbfs, &args, &fopts) != 0)
         return 1;
