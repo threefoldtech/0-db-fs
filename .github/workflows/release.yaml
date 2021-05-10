@@ -1,8 +1,21 @@
 name: Build release
-on:  
-  release:
-    types: [created]
+on: [push]
+#  release:
+#    types: [created]
 jobs:
+  static:
+    name: Create release artifacts (static)
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.13
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@master
+
+      - name: Install dependencies
+        run: |
+          apk add alpine-sdk
+
   generate:
     name: Create release artifacts
     runs-on: ubuntu-18.04
@@ -14,7 +27,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git build-essential wget pkg-config \
-            udev libudev-dev meson libhiredis-dev
+            udev libudev-dev meson libhiredis-dev libunwind-dev
 
       - name: Download libfuse3
         run: |
