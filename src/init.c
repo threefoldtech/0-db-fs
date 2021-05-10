@@ -10,6 +10,7 @@
 #include <errno.h>
 #include "zdbfs.h"
 #include "init.h"
+#include "system.h"
 
 //
 // argument options

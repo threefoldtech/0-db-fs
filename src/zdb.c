@@ -16,6 +16,7 @@
 #include "init.h"
 #include "zdb.h"
 #include "inode.h"
+#include "system.h"
 
 // global zdb errno propagation
 int zdb_errno = 0;

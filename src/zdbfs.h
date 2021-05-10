@@ -228,7 +228,4 @@
         uint64_t size;        // filesystem size in bytes
 
     } zdbfs_header_t;
-
-    void warns(char *help, char *value);
-    void dies(char *help, char *value);
 #endif
