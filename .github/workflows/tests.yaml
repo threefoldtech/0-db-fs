@@ -29,18 +29,10 @@ jobs:
       run: |
         cd 0-db/zdbd && ./zdb --mode seq --background
 
-    - name: Create original namespaces
-      run: |
-        echo "NSNEW zdbfs-meta" | redis-cli -p 9900
-        echo "NSNEW zdbfs-data" | redis-cli -p 9900
-        echo "NSNEW zdbfs-temp" | redis-cli -p 9900
-        echo "NSSET zdbfs-temp password hello" | redis-cli -p 9900
-        echo "NSSET zdbfs-temp public 0" | redis-cli -p 9900
-
     - name: Run tests
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo ./zdbfs -o allow_other -o background /mnt/zdbfs
+        sudo ./zdbfs -o allow_other -o background -o autons /mnt/zdbfs
 
     - name: Download Linux Kernel
       working-directory: /tmp
@@ -112,18 +104,10 @@ jobs:
       run: |
         cd 0-db/zdbd && ./zdb --mode seq --background
 
-    - name: Create original namespaces
-      run: |
-        echo "NSNEW zdbfs-meta" | redis-cli -p 9900
-        echo "NSNEW zdbfs-data" | redis-cli -p 9900
-        echo "NSNEW zdbfs-temp" | redis-cli -p 9900
-        echo "NSSET zdbfs-temp password hello" | redis-cli -p 9900
-        echo "NSSET zdbfs-temp public 0" | redis-cli -p 9900
-
     - name: Run zdbfs
       run: |
         sudo mkdir /mnt/zdbfs
-        sudo ./zdbfs -o allow_other -o background /mnt/zdbfs
+        sudo ./zdbfs -o allow_other -o background -o autons /mnt/zdbfs
 
     - name: Run sanity check
       run: ./tests/basic.sh /mnt/zdbfs
