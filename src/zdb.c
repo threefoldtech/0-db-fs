@@ -67,6 +67,28 @@ int zdb_nsnew(redisContext *remote, char *namespace) {
     return 0;
 }
 
+int zdb_flush(redisContext *remote) {
+    const char *argv[] = {"FLUSH"};
+    redisReply *reply;
+
+    zdbfs_debug("[+] zdb: flush: namespace: %p\n", remote);
+
+    if(!(reply = redisCommandArgv(remote, 1, argv, NULL))) {
+        zdbfs_critical("zdb: flush: %p: %s", remote, remote->errstr);
+        return 1;
+    }
+
+    if(strcmp(reply->str, "OK") != 0) {
+        zdbfs_error("zdb: flush: %p: %s", remote, reply->str);
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    freeReplyObject(reply);
+
+    return 0;
+}
+
 int zdb_nsset(redisContext *remote, char *namespace, char *setting, char *value) {
     const char *argv[] = {"NSSET", namespace, setting, value};
     int argc = 4;
