@@ -6,6 +6,7 @@
     typedef struct zdb_nsinfo_t {
         size_t entries;
         size_t datasize;
+        size_t nextid;
 
     } zdb_nsinfo_t;
 

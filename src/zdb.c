@@ -123,6 +123,30 @@ static size_t zdb_nsinfo_sizeval(char *buffer, char *entry) {
     return strtoumax(match, NULL, 10);
 }
 
+static size_t zdb_nsinfo_internal_id(char *buffer, char *entry) {
+    char *match;
+    char numbuf[64];
+
+    if(!(match = strstr(buffer, entry)))
+        return 0;
+
+    match += strlen(entry) + 2;
+
+    memset(numbuf, 0x00, sizeof(numbuf));
+    sprintf(numbuf, "0x");
+
+    // FIXME: loop ? better way ?
+    // convert 0xaabbccdd to 0xddccbbaa
+    memcpy(numbuf + 2, match + 8, 2);
+    memcpy(numbuf + 4, match + 6, 2);
+    memcpy(numbuf + 6, match + 4, 2);
+    memcpy(numbuf + 8, match + 2, 2);
+
+    // return strtoul(match, NULL, 0);
+    return strtoul(numbuf, NULL, 0);
+}
+
+
 static int zdb_locked(redisReply *reply) {
     if(reply->type != REDIS_REPLY_ERROR)
         return 0;
@@ -162,6 +186,7 @@ zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
 
     nsinfo->entries = zdb_nsinfo_sizeval(reply->str, "entries");
     nsinfo->datasize = zdb_nsinfo_sizeval(reply->str, "data_size_bytes");
+    nsinfo->nextid = zdb_nsinfo_internal_id(reply->str, "next_internal_id");
 
     freeReplyObject(reply);
 
