@@ -255,6 +255,15 @@ static int zdbfs_cache_block_restore(zdbfs_t *fs, inocache_t *cache, blockcache_
     zdbfs_lowdebug("cache: block offloaded restored, %lu bytes read", block->blocksize);
     zdbfs_zdb_reply_free(reply);
 
+    // delete that block from temporary namespace
+    if(zdb_del(fs->tempctx, block->offid) != 0) {
+        zdbfs_debug("[-] cache: temporary: could not delete key: %u\n", block->offid);
+        return 0;
+    }
+
+    // ensure blockid is not set anymore
+    block->offid = 0;
+
     return 0;
 }
 
@@ -583,12 +592,50 @@ int zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
     return 1;
 }
 
+size_t zdbfs_cache_temp_cleanup(zdbfs_t *fs) {
+    zdb_nsinfo_t *temp;
+
+    if(!(temp = zdb_nsinfo(fs->tempctx, fs->opts->temp_ns)))
+        return 0;
+
+    if(temp->nextid > 32 && temp->entries == 1) {
+        zdbfs_lowdebug("cache: temporary namespace not empty and not in use: %lu", temp->nextid);
+
+        zdb_reply_t *reply;
+        redisReply *zreply;
+
+        zdbfs_lowdebug("cache: %s: backing up temporary namespace header", fs->opts->temp_ns);
+        if(!(reply = zdb_get(fs->tempctx, 0))) {
+            zdbfs_critical("cache: delegate: could not get header: %s", fs->tempctx->errstr);
+            return 1;
+        }
+
+        zdbfs_lowdebug("cache: %s: flushing temporary namespace", fs->opts->temp_ns);
+        zdb_flush(fs->tempctx);
+
+        zdbfs_lowdebug("cache: %s: restoring temporary namespace header", fs->opts->temp_ns);
+
+        if(!(zreply = redisCommand(fs->tempctx, "SET %b %b", NULL, 0, reply->value, reply->length))) {
+            zdbfs_critical("inode: temporary reset: %s", fs->tempctx->errstr);
+            return 1;
+        }
+
+        zdbfs_zdb_reply_free(reply);
+        freeReplyObject(zreply);
+    }
+
+    return 1;
+}
+
 size_t zdbfs_cache_sync(zdbfs_t *fs) {
     size_t cleared = 0;
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
         return 0;
+
+    // check if the temporary namespace needs to be reset
+    zdbfs_cache_temp_cleanup(fs);
 
     // checking each cache entries and check
     // if entry were added few time ago or more
