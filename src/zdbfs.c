@@ -885,7 +885,11 @@ static void zdbfs_fuse_rename(fuse_req_t req, fuse_ino_t parent, const char *nam
         if(flags & RENAME_NOREPLACE)
             return zdbfs_fuse_error(req, EEXIST, nentry->ino);
 
-        zdbfs_inode_unlink(req, existing, nentry->ino);
+        if(zdbfs_inode_unlink(req, existing, nentry->ino) == 0) {
+            // unlink removed cache already, should
+            // not be freed another time later
+            existing = NULL;
+        }
 
         // remove target from directory
         zdbfs_inode_remove_entry(new, newname);
