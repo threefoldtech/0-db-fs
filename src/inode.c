@@ -1084,6 +1084,9 @@ int zdbfs_inode_init_release(zdbfs_t *fs) {
         return 1;
     }
 
+    freeReplyObject(zreply);
+    zdbfs_zdb_reply_free(reply);
+
     return 0;
 }
 

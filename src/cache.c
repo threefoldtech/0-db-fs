@@ -624,6 +624,8 @@ size_t zdbfs_cache_temp_cleanup(zdbfs_t *fs) {
         freeReplyObject(zreply);
     }
 
+    free(temp);
+
     return 1;
 }
 
