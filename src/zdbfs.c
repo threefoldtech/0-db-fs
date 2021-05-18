@@ -1108,7 +1108,7 @@ int zdbfs_fuse_session_loop(struct fuse_session *se, zdbfs_t *fs, int timeout) {
         // if the filesystem is under pressure, there can be
         // no timeout for a long time and cache can be filled up
         // quickly, this force scrubbing to happen
-        if(n == 0 || proceed > 32768) {
+        if(n == 0 || proceed > 8192) {
             // zdbfs_cache_stats(fs);
             size_t flushed = zdbfs_cache_sync(fs);
 
