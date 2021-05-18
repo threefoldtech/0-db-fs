@@ -1,7 +1,7 @@
 #ifndef ZDBFS_H
     #define ZDBFS_H
 
-    #define ZDBFS_VERSION  "0.1.5"
+    #define ZDBFS_VERSION  "0.1.6"
 
     // internal version used for metadata header
     #define ZDBFS_INTERNAL_VERSION  1
