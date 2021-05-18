@@ -305,7 +305,15 @@ blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t 
     // update cache hit time
     cache->atime = zdbfs_cache_time_now();
 
-    for(size_t i = 0; i < cache->blocks; i++) {
+    // do a blocks reverse linear search
+    //
+    // FIXME: this is a quick optimization, but linear search is
+    //        definitively the thing to avoid to get performance
+    //
+    //        last blocks are usually blocks more recent and the blocks
+    //        which are more likely the one to be fetched backed more often,
+    //        that's why reverse lookup is usually faster
+    for(ssize_t i = cache->blocks - 1; i >= 0; i--) {
         blockcache_t *block = cache->blcache[i];
 
         if(block->blockidx == blockidx) {

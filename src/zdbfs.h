@@ -122,7 +122,7 @@
         zdb_inode_t *inode;     // pointer to the inode
         double atime;           // last access time
 
-        size_t blocks;          // amount of blocks in memory
+        ssize_t blocks;         // amount of blocks in memory
         size_t blonline;        // amount of blocks available in memory
         blockcache_t **blcache; // cached blocks list
 
