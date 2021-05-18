@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
+#include <time.h>
 #include <sys/time.h>
 #include <float.h>
 #include <errno.h>
@@ -49,9 +50,12 @@ static void zdbfs_cache_stats_random_flush(zdbfs_t *fs) {
 
 // get current time in microseconds double
 double zdbfs_cache_time_now() {
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return tv.tv_sec + (tv.tv_usec / 1000000.0);
+    // struct timeval tv;
+    // gettimeofday(&tv, NULL);
+    // return tv.tv_sec + (tv.tv_usec / 1000000.0);
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME_COARSE, &ts);
+    return ts.tv_sec + (ts.tv_nsec / 1000000000.0);
 }
 
 static void zdbfs_cache_block_free_data(blockcache_t *block) {
