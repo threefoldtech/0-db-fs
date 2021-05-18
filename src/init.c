@@ -34,10 +34,11 @@ static struct fuse_opt zdbfs_opts[] = {
     {"tn=%s", zdb_opt_field(temp_ns), 0},
     {"ts=%s", zdb_opt_field(temp_pass), 0},
 
-    {"nocache",    zdb_opt_field(nocache), 0},
-    {"autons",     zdb_opt_field(autons), 0},
-    {"background", zdb_opt_field(background), 0},
-    {"logfile=%s", zdb_opt_field(logfile), 0},
+    {"nocache",      zdb_opt_field(nocache), 0},
+    {"autons",       zdb_opt_field(autons), 0},
+    {"background",   zdb_opt_field(background), 0},
+    {"logfile=%s",   zdb_opt_field(logfile), 0},
+    {"cachesize=%d", zdb_opt_field(cachesize), 0},
     FUSE_OPT_END
 };
 
@@ -51,6 +52,7 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     fs->opts->nocache = -1;
     fs->opts->background = -1;
     fs->opts->autons = -1;
+    fs->opts->cachesize = ZDBFS_BLOCKS_CACHE_LIMIT;
 
     fs->opts->meta_host = strdup("localhost");
     fs->opts->meta_port = 9900;
@@ -103,6 +105,9 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
     fs->background = (fs->opts->background == 0) ? 1 : 0;
     fs->autons = (fs->opts->autons == 0) ? 1 : 0;
     fs->logfile = fs->opts->logfile;
+    fs->cachesize = fs->opts->cachesize;
+
+    zdbfs_verbose("[+] blocks cache size: %lu KB\n", (fs->cachesize * ZDBFS_BLOCK_SIZE) / 1024);
 
     // initialize cache
     if(!(fs->tmpblock = malloc(ZDBFS_BLOCK_SIZE)))

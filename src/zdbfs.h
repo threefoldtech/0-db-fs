@@ -177,6 +177,7 @@
         int background;       // fork to background
         int autons;           // runtime namespace create
         char *logfile;        // logfile where logging actions
+        int cachesize;        // amount of blocks to keep in cache
 
     } zdbfs_options;
 
@@ -198,6 +199,7 @@
         FILE *logfd;              // log file descriptor
         stats_t stats;            // global statistics
         uint64_t fssize;          // filesystem maximum size to report
+        size_t cachesize;         // amount of blocks to keep in cache
 
         zdbfs_options *opts;
 
