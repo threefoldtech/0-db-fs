@@ -344,7 +344,9 @@ void zdbfs_cache_block_hit(blockcache_t *block) {
 }
 
 blockcache_t *zdbfs_cache_block_add(fuse_req_t req, inocache_t *cache, uint32_t blockidx) {
-    if(cache->blonline + 1 > ZDBFS_BLOCKS_CACHE_LIMIT) {
+    zdbfs_t *fs = fuse_req_userdata(req);
+
+    if(cache->blonline + 1 > fs->cachesize) {
         zdbfs_lowdebug("cache: too many blocks online [%lu], offloading", cache->blonline);
 
         if(zdbfs_cache_block_delegate(req, cache) == 0)
