@@ -1079,9 +1079,16 @@ static void zdbfs_fuse_ioctl(fuse_req_t req, fuse_ino_t ino, int _cmd, void *arg
 
         uint64_t now = time(NULL);
         fuse_reply_ioctl(req, 0, &now, sizeof(uint64_t));
-
         return;
     }
+
+    if(cmd == ZDBFS_IOCTL_STATISTICS) {
+        zdbfs_debug("[+] ioctl: statistics: requested\n");
+
+        fuse_reply_ioctl(req, 0, &fs->stats, sizeof(stats_t));
+        return;
+    }
+
 
     // invalid ioctl
     zdbfs_fuse_error(req, EINVAL, ino);
