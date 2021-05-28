@@ -155,6 +155,27 @@
         size_t cache_linear_flush;
         size_t cache_random_flush;
 
+        size_t syscall_getattr;
+        size_t syscall_setattr;
+        size_t syscall_create;
+        size_t syscall_readdir;
+        size_t syscall_open;
+        size_t syscall_read;
+        size_t syscall_write;
+        size_t syscall_mkdir;
+        size_t syscall_unlink;
+        size_t syscall_rmdir;
+        size_t syscall_rename;
+        size_t syscall_link;
+        size_t syscall_symlink;
+        size_t syscall_statsfs;
+        size_t syscall_ioctl;
+
+        size_t read_bytes;
+        size_t write_bytes;
+
+        size_t errors;
+
     } stats_t;
 
     typedef struct zdbfs_options {
@@ -230,4 +251,9 @@
         uint64_t size;        // filesystem size in bytes
 
     } zdbfs_header_t;
+
+    #define KB(x)   (x / (1024.0))
+    #define MB(x)   (x / (1024 * 1024.0))
+    #define GB(x)   (x / (1024 * 1024 * 1024.0))
+    #define TB(x)   (x / (1024 * 1024 * 1024 * 1024.0))
 #endif
