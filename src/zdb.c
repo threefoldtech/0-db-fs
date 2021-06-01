@@ -64,7 +64,7 @@ int zdb_nsnew(redisContext *remote, char *namespace) {
     }
 
     if(strcmp(reply->str, "OK") != 0) {
-        zdbfs_error("zdb: %s: nsnew: %s: %s", rnid(remote), namespace, reply->str);
+        zdbfs_error("zdb: nsnew: %s: %s", namespace, reply->str);
         freeReplyObject(reply);
         return 1;
     }
