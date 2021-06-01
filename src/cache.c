@@ -64,7 +64,7 @@ static void zdbfs_cache_block_free_data(blockcache_t *block) {
 }
 
 void zdbfs_cache_block_free(inocache_t *cache) {
-    for(size_t i = 0; i < cache->blocks; i++) {
+    for(ssize_t i = 0; i < cache->blocks; i++) {
         free(cache->blcache[i]->data);
         free(cache->blcache[i]);
     }
@@ -76,7 +76,7 @@ void zdbfs_cache_block_free(inocache_t *cache) {
 }
 
 static blockcache_t *zdbfs_cache_block_first_online(inocache_t *cache) {
-    for(size_t i = 0; i < cache->blocks; i++)
+    for(ssize_t i = 0; i < cache->blocks; i++)
         if(cache->blcache[i]->online == ZDBFS_BLOCK_ONLINE)
             return cache->blcache[i];
 
@@ -87,7 +87,7 @@ static blockcache_t *zdbfs_cache_block_oldest_online(inocache_t *cache) {
     blockcache_t *online = zdbfs_cache_block_first_online(cache);
     blockcache_t *oldest = online;
 
-    for(size_t i = 0; i < cache->blocks; i++) {
+    for(ssize_t i = 0; i < cache->blocks; i++) {
         blockcache_t *block = cache->blcache[i];
 
         if(block->online == ZDBFS_BLOCK_ONLINE && block->atime < oldest->atime)
@@ -105,7 +105,7 @@ static int zdbfs_cache_block_linear(inocache_t *cache) {
     // and check if block is full and time increased
     //
     // FIXME: does this logic is good enough ?
-    for(size_t i = 0; i < cache->blocks - 1; i++) {
+    for(ssize_t i = 0; i < cache->blocks - 1; i++) {
         blockcache_t *block = cache->blcache[i];
 
         // checking for incremented value
@@ -142,7 +142,7 @@ static int zdbfs_cache_block_linear(inocache_t *cache) {
 static int zdbfs_cache_block_linear_flush(zdbfs_t *fs, inocache_t *cache) {
     int flushed = 0;
 
-    for(size_t i = 0; i < cache->blocks - 1; i++) {
+    for(ssize_t i = 0; i < cache->blocks - 1; i++) {
         blockcache_t *block = cache->blcache[i];
 
         // skip blocks not online
@@ -530,7 +530,7 @@ static int zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
 
     zdbfs_debug("[+] cache: release: blocks available, flushing\n");
 
-    for(size_t i = 0; i < cache->blocks; i++) {
+    for(ssize_t i = 0; i < cache->blocks; i++) {
         blockcache_t *blc = cache->blcache[i];
 
         if(blc->online == ZDBFS_BLOCK_OFFLINE)
@@ -764,7 +764,7 @@ static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
 
         for(size_t i = 0; i < branch->length; i++)
             if(branch->inocache[i]->blocks > 0)
-                for(size_t j = 0; j < branch->inocache[i]->blocks; j++)
+                for(ssize_t j = 0; j < branch->inocache[i]->blocks; j++)
                     size += branch->inocache[i]->blcache[j]->blocksize;
     }
 
