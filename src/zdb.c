@@ -13,6 +13,7 @@
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
 #include "zdbfs.h"
+#include "cache.h"
 #include "init.h"
 #include "zdb.h"
 #include "inode.h"
@@ -422,8 +423,38 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     if(zdb_select(fs->tempctx, fs->opts->temp_ns, fs->opts->temp_pass))
         return 1;
 
+    // zdbfs_zdb_benchmark(fs->tempctx);
+
     return 0;
 }
+
+#if 0
+void zdbfs_zdb_benchmark(redisContext *remote) {
+    char *buffer;
+    size_t buflen = ZDBFS_BLOCK_SIZE;
+    int pass = 32768;
+
+    if(!(buffer = malloc(buflen)))
+        zdbfs_sysfatal("benchmark: malloc");
+
+    memset(buffer, 0x01, buflen);
+
+    double start = zdbfs_cache_time_now();
+
+    for(int i = 0; i < pass; i++) {
+        printf("buffer %d\n", i);
+        zdb_set(remote, 0, buffer, buflen);
+    }
+
+    double end = zdbfs_cache_time_now();
+
+    double sizemb = (pass * buflen) / (1024 * 1024.0);
+    printf("%.3f -- %.3f MB -- %.3f MB/s\n", end - start, sizemb, sizemb / (end - start));
+
+    zdb_flush(remote);
+    free(buffer);
+}
+#endif
 
 void zdbfs_zdb_reply_free(zdb_reply_t *reply) {
     if(!reply->rreply)
