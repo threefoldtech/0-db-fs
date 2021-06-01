@@ -37,7 +37,7 @@ jobs:
       run: |
         cd 0-db/zdbd && ./zdb --mode seq --background
 
-    - name: Run tests
+    - name: Run zdbfs (0-db-fs)
       run: |
         sudo mkdir /mnt/zdbfs
         sudo ./zdbfs -o allow_other -o background -o autons /mnt/zdbfs
@@ -121,7 +121,7 @@ jobs:
       run: |
         cd 0-db/zdbd && ./zdb --mode seq --background
 
-    - name: Run zdbfs
+    - name: Run 0-db-fs (zdbfs)
       run: |
         sudo mkdir /mnt/zdbfs
         sudo ./zdbfs -o allow_other -o background -o autons /mnt/zdbfs
