@@ -793,8 +793,10 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
 
     // check if inode is not linked on the filesystem
     if(file->links == 0) {
-        // delete blocks
-        zdbfs_inode_blocks_remove(req, file);
+        if(S_ISREG(file->mode)) {
+            // delete regular file blocks
+            zdbfs_inode_blocks_remove(req, file);
+        }
 
         // delete inode itself
         if(zdb_del(fs->metactx, ino) != 0)
