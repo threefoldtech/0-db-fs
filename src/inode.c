@@ -768,6 +768,11 @@ int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
     for(size_t block = 0; block < blocks->length; block++) {
         uint32_t blockid = blocks->blocks[block];
 
+        if(blockid == 0) {
+            zdbfs_debug("[+] inode: delete: skipping block %lu (not set)\n", block);
+            continue;
+        }
+
         zdbfs_debug("[+] inode: delete: block %lu [%u]\n", block, blockid);
 
         if(zdb_del(fs->datactx, blockid) != 0)
