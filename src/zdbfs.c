@@ -766,6 +766,7 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
     zdbfs_t *fs = fuse_req_userdata(req);
     volino zdb_inode_t *inode = NULL;
     volino zdb_inode_t *target = NULL;
+    inocache_t *inocache;
 
     //
     // FIXME: no forget support
@@ -797,6 +798,16 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
         zdbfs_debug("[+] rmdir: target directory not empty (length: %u)\n", targetdir->length);
         return zdbfs_fuse_error(req, ENOTEMPTY, expected->ino);
     }
+
+    // invalidate cache if present
+    if((inocache = zdbfs_cache_get(req, expected->ino))) {
+        zdbfs_debug("[+] rmdir: target inode still in cache, cleaning\n");
+        zdbfs_cache_drop(req, inocache);
+    }
+
+    // remove inode from backend
+    if(zdb_del(fs->metactx, expected->ino) != 0)
+        return zdbfs_fuse_error(req, EIO, expected->ino);
 
     // this should never fails since it matched just before
     if(zdbfs_inode_remove_entry(inode, name) != 0)
