@@ -8,8 +8,17 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev wget libunwind-dev
+        sudo apt-get install -y build-essential libfuse3-dev wget libunwind-dev
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
+
+    - name: Install hiredis 1.0
+      run: |
+        cd /tmp
+        wget https://github.com/redis/hiredis/archive/refs/tags/v1.0.0.tar.gz
+        tar -xf v1.0.0.tar.gz
+        cd hiredis-1.0.0
+        make -j 8
+        sudo make install
 
     - name: Checkout development code
       uses: actions/checkout@v1
@@ -83,8 +92,17 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev libhiredis-dev wget libunwind-dev
+        sudo apt-get install -y build-essential libfuse3-dev wget libunwind-dev
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
+
+    - name: Install hiredis 1.0
+      run: |
+        cd /tmp
+        wget https://github.com/redis/hiredis/archive/refs/tags/v1.0.0.tar.gz
+        tar -xf v1.0.0.tar.gz
+        cd hiredis-1.0.0
+        make -j 8
+        sudo make install
 
     - name: Checkout development code
       uses: actions/checkout@v1
