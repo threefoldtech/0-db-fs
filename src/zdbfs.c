@@ -803,6 +803,9 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
     if((inocache = zdbfs_cache_get(req, expected->ino))) {
         zdbfs_debug("[+] rmdir: target inode still in cache, cleaning\n");
         zdbfs_cache_drop(req, inocache);
+
+        // avoid double free by volino
+        target = NULL;
     }
 
     // remove inode from backend
