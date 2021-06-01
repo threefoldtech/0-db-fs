@@ -19,9 +19,26 @@
 #include "system.h"
 
 void zdbfs_inode_dump(zdb_inode_t *inode) {
-    printf("[+] --- inode dump\n");
-    printf("[+] mode: %x\n", inode->mode);
-    printf("[+] is directory: %s\n", S_ISDIR(inode->mode) ? "yes" : "no");
+    printf("[+] <<< inode dump\n");
+    printf("[+] mode: %o\n", inode->mode);
+
+    if(S_ISDIR(inode->mode))
+        printf("[+] inode type: directory\n");
+
+    if(S_ISCHR(inode->mode))
+        printf("[+] inode type: character special\n");
+
+    if(S_ISBLK(inode->mode))
+        printf("[+] inode type: block special file\n");
+
+    if(S_ISFIFO(inode->mode))
+        printf("[+] inode type: fifo file\n");
+
+    if(S_ISLNK(inode->mode))
+        printf("[+] inode type: symbolic link\n");
+
+    if(S_ISSOCK(inode->mode))
+        printf("[+] inode type: unix socket\n");
 
     if(S_ISDIR(inode->mode)) {
         zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
@@ -34,14 +51,16 @@ void zdbfs_inode_dump(zdb_inode_t *inode) {
     }
 
     if(S_ISREG(inode->mode)) {
+        printf("[+] inode type: regular file\n");
+
         zdb_blocks_t *blocks = zdbfs_inode_blocks_get(inode);
         printf("[+] blocks length: %lu\n", blocks->length);
 
         for(size_t i = 0; i < blocks->length; i++)
-            printf("[+] inode block id: %u\n", blocks->blocks[i]);
+            printf("[+] inode block [%lu]: %u\n", i, blocks->blocks[i]);
     }
 
-    printf("[+] --- inode dump\n");
+    printf("[+] >>> inode dump\n");
 }
 
 static struct timespec zdbfs_time_sys(uint32_t source) {
