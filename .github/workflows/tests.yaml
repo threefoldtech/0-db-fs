@@ -18,7 +18,7 @@ jobs:
         tar -xf v1.0.0.tar.gz
         cd hiredis-1.0.0
         make -j 8
-        sudo make install
+        sudo make PREFIX=/usr install
 
     - name: Checkout development code
       uses: actions/checkout@v1
@@ -102,7 +102,7 @@ jobs:
         tar -xf v1.0.0.tar.gz
         cd hiredis-1.0.0
         make -j 8
-        sudo make install
+        sudo make PREFIX=/usr install
 
     - name: Checkout development code
       uses: actions/checkout@v1
