@@ -1300,16 +1300,16 @@ int main(int argc, char *argv[]) {
     fuse_session_unmount(se);
     fuse_remove_signal_handlers(se);
     fuse_session_destroy(se);
-    fuse_opt_free_args(&args);
-
-    // free blocks and inodes cache
-    zdbfs_init_free(&zdbfs, &fopts);
 
     // flag filesystem not in use anymore
     zdbfs_inode_init_release(&zdbfs);
 
     // disconnect redis
     zdbfs_zdb_free(&zdbfs);
+
+    // free blocks and inodes cache
+    zdbfs_init_free(&zdbfs, &fopts);
+    fuse_opt_free_args(&args);
 
     return ret;
 }

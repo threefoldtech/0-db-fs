@@ -834,7 +834,7 @@ zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t
     zdb_reply_t *reply;
     inocache_t *cache;
 
-    zdbfs_debug("[+] <<<<<< inode: request data block %u [id %u]\n", block, blockid);
+    zdbfs_debug("[+] inode: block fetch: request block %u [id %u]\n", block, blockid);
 
     // check cache first
     if((cache = zdbfs_cache_get(req, ino))) {
@@ -980,6 +980,7 @@ static int zdbfs_inode_prepare_namespace(redisContext *ctx, zdbfs_header_t *head
     if(memcmp(zreply->str, &expected, zreply->len) != 0) {
         char replied[32];
         sprintf(replied, "0x%x", zreply->str[0]);
+        printf("[-] initializer: initializing namespace magic %s failed\n", magic);
         dies("initializer: initial id mismatch (expected 0x00)", replied);
     }
 
