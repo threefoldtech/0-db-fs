@@ -69,7 +69,7 @@ void zdbfs_system_backtrace() {
 	if(unw_getcontext(&context) < 0)
 		dies("backtrce", "cannot get local machine state");
 
-	if(unw_init_local(&cursor, &context) < 0)
+	if(unw_init_local2(&cursor, &context, UNW_INIT_SIGNAL_FRAME) < 0)
 		dies("backtrace", "cannot initialize cursor for local unwinding");
 
 	// currently the IP is within backtrace() itself so this loop
