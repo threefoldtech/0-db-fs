@@ -494,9 +494,6 @@ void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inod
 }
 
 void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode, uint32_t ino) {
-    // cleaning target stat struct
-    memset(st, 0, sizeof(struct stat));
-
     st->st_ino = ino;
     st->st_mode = inode->mode;
     st->st_uid = inode->uid;
@@ -514,6 +511,7 @@ void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode, uint32_t ino) {
     st->st_blocks = (inode->size + (512 - (inode->size % 512))) / 512;
 
     // FIXME: not implemented
+    st->st_blksize = 0;
     st->st_rdev = 0;
     st->st_dev = 0;
 }
