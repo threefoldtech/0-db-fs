@@ -15,7 +15,7 @@ release: CFLAGS += -DRELEASE -O2 -march=native
 release: clean $(EXEC)
 
 production: CFLAGS += -DRELEASE -O2
-production: LDFLAGS = -rdynamic -static -lhiredis -lunwind -lfuse3 -lpthread -ldl -llzma -pg
+production: LDFLAGS = -rdynamic -static -lhiredis -lunwind -lfuse3 -lpthread -ldl -llzma
 production: all
 
 $(EXEC): $(OBJ)
