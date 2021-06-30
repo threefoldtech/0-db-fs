@@ -8,7 +8,7 @@ jobs:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev wget libunwind-dev
+        sudo apt-get install -y build-essential libfuse3-dev wget
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
 
     - name: Install hiredis 1.0
@@ -19,6 +19,16 @@ jobs:
         cd hiredis-1.0.0
         make -j 8
         sudo make PREFIX=/usr install
+
+    - name: Install libunwind 1.5.0
+      run: |
+        cd /tmp
+        wget https://github.com/libunwind/libunwind/releases/download/v1.5/libunwind-1.5.0.tar.gz
+        tar -xf libunwind-1.5.0.tar.gz
+        cd libunwind-1.5.0
+        ./configure --prefix=/usr
+        make -j 8
+        sudo make install
 
     - name: Checkout development code
       uses: actions/checkout@v1
@@ -86,13 +96,13 @@ jobs:
       run: diff -qr -x tools -x x86 /tmp/linux-5.9.13 /mnt/zdbfs/linux-5.9.13
 
   sanity:
-    name: FIlesystem Sanity checks
+    name: Filesystem Sanity checks
     runs-on: ubuntu-20.04
     steps:
     - name: Prepare dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libfuse3-dev wget libunwind-dev
+        sudo apt-get install -y build-essential libfuse3-dev wget
         sudo apt-get install -y libelf-dev flex bison libssl-dev bc
 
     - name: Install hiredis 1.0
@@ -103,6 +113,16 @@ jobs:
         cd hiredis-1.0.0
         make -j 8
         sudo make PREFIX=/usr install
+
+    - name: Install libunwind 1.5.0
+      run: |
+        cd /tmp
+        wget https://github.com/libunwind/libunwind/releases/download/v1.5/libunwind-1.5.0.tar.gz
+        tar -xf libunwind-1.5.0.tar.gz
+        cd libunwind-1.5.0
+        ./configure --prefix=/usr
+        make -j 8
+        sudo make install
 
     - name: Checkout development code
       uses: actions/checkout@v1
