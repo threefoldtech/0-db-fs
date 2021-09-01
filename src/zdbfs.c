@@ -279,6 +279,9 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
         return;
     }
 
+    // force entry to be cached, speed up chunked access
+    zdbfs_cache_add(req, ino, inode);
+
     // fillin direntry with inode contents
     zdbfs_debug("[+] readdir: %lu: okay, fillin entries\n", ino);
     zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
