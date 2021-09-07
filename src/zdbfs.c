@@ -1102,6 +1102,15 @@ static void zdbfs_fuse_ioctl(fuse_req_t req, fuse_ino_t ino, int _cmd, void *arg
     if(cmd == ZDBFS_IOCTL_STATISTICS) {
         zdbfs_debug("[+] ioctl: statistics: requested\n");
 
+        if(zdbfs_cache_enabled(fs)) {
+            zdbfs_lowdebug("statistics: computing cache size [branches %d]", ZDBFS_INOROOT_BRANCHES);
+            fs->stats.cache_branches = ZDBFS_INOROOT_BRANCHES;
+            fs->stats.cache_entries = zdbfs_cache_stats_entries(fs);
+            fs->stats.cache_blocksize = zdbfs_cache_stats_blocksize(fs);
+            fs->stats.cache_blocks = zdbfs_cache_stats_blocks(fs);
+            fs->stats.cache_branches_allocated = zdbfs_cache_stats_branches_entries(fs);
+        }
+
         fuse_reply_ioctl(req, 0, &fs->stats, sizeof(stats_t));
         return;
     }

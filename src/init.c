@@ -135,6 +135,9 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
             zdbfs_sysfatal("could not open logfile");
     }
 
+    // set stats schema version
+    fs->stats.version = ZDBFS_STATS_VERSION;
+
     return 0;
 }
 

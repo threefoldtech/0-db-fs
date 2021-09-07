@@ -1,6 +1,7 @@
 #ifndef ZDBFS_CACHE_H
     #define ZDBFS_CACHE_H
 
+    int zdbfs_cache_enabled(zdbfs_t *fs);
     double zdbfs_cache_time_now();
 
     inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino);
@@ -14,6 +15,11 @@
 
     // dump cache statistics
     void zdbfs_cache_stats(zdbfs_t *fs);
+
+    size_t zdbfs_cache_stats_entries(zdbfs_t *fs);
+    size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs);
+    size_t zdbfs_cache_stats_blocks(zdbfs_t *fs);
+    size_t zdbfs_cache_stats_branches_entries(zdbfs_t *fs);
 
     // blocks
     blockcache_t *zdbfs_cache_block_get(fuse_req_t req, inocache_t *cache, uint32_t blockidx);

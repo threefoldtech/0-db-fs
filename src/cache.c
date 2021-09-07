@@ -741,7 +741,7 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
     return flushed;
 }
 
-static size_t zdbfs_cache_stats_entries(zdbfs_t *fs) {
+size_t zdbfs_cache_stats_entries(zdbfs_t *fs) {
     size_t entries = 0;
 
     for(size_t b = 0; b < fs->inoroot->length; b++) {
@@ -756,7 +756,31 @@ static size_t zdbfs_cache_stats_entries(zdbfs_t *fs) {
     return entries;
 }
 
-static size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
+size_t zdbfs_cache_stats_branches_entries(zdbfs_t *fs) {
+    size_t entries = 0;
+
+    for(size_t b = 0; b < fs->inoroot->length; b++) {
+        inobranch_t *branch = zdbfs_cache_branch_get(fs, b);
+        entries += branch->length;
+    }
+
+    return entries;
+}
+
+size_t zdbfs_cache_stats_blocks(zdbfs_t *fs) {
+    size_t blocks = 0;
+
+    for(size_t b = 0; b < fs->inoroot->length; b++) {
+        inobranch_t *branch = zdbfs_cache_branch_get(fs, b);
+
+        for(size_t i = 0; i < branch->length; i++)
+            blocks += branch->inocache[i]->blocks;
+    }
+
+    return blocks;
+}
+
+size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
     size_t size = 0;
 
     for(size_t b = 0; b < fs->inoroot->length; b++) {
