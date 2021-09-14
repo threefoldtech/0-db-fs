@@ -35,7 +35,7 @@ jobs:
 
     - name: Build filesystem
       run: |
-        make release
+        make production
 
     - name: Build 0-db
       run: |
@@ -129,7 +129,7 @@ jobs:
 
     - name: Build filesystem
       run: |
-        make release
+        make production
 
     - name: Build 0-db
       run: |
