@@ -11,13 +11,27 @@
     } zdb_nsinfo_t;
 
     int zdbfs_zdb_connect(zdbfs_t *fs);
-    void zdbfs_zdb_free(zdbfs_t *fs);
 
+    void zdbfs_zdb_free(zdbfs_t *fs);
+    void zdbfs_zdb_reply_free(zdb_reply_t *reply);
+
+    // perform FLUSH command (clean namespace)
     int zdb_flush(zdb_t *remote);
+
+    // perform GET command (fetch entry)
     zdb_reply_t *zdb_get(zdb_t *remote, uint64_t id);
+
+    // perform SET command (set entry)
     uint64_t zdb_set(zdb_t *remote, uint64_t id, const void *buffer, size_t length);
+    uint64_t zdb_set_initial(zdb_t *remote, const void *buffer, size_t length, int update);
+
+    // perform DEL command (delete key)
     int zdb_del(zdb_t *remote, uint64_t id);
+
+    // perform NSINFO command (namespace information)
     zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace);
 
-    void zdbfs_zdb_reply_free(zdb_reply_t *reply);
+    // perform SELECT command (select namespace)
+    int zdb_select(zdb_t *remote, char *namespace, char *password);
+
 #endif

@@ -974,26 +974,19 @@ static int zdbfs_header_check(uint8_t *buffer, size_t bufsize, char *magic) {
 }
 
 static int zdbfs_inode_prepare_namespace(zdb_t *backend, zdbfs_header_t *header, char *magic) {
-    redisReply *zreply;
-    uint64_t expected = 0;
+    uint64_t response;
 
     // create initial entry
     memcpy(header->magic, magic, sizeof(header->magic));
 
-    // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(backend->ctx, "SET %b %b", NULL, 0, header, sizeof(zdbfs_header_t)))) {
-        zdbfs_critical("inode: init: %s", backend->ctx->errstr);
-        return 1;
-    }
-
-    if(memcmp(zreply->str, &expected, zreply->len) != 0) {
+    // set initial entry
+    if((response = zdb_set_initial(backend, header, sizeof(zdbfs_header_t), 0) != 0)) {
         char replied[32];
-        sprintf(replied, "0x%x", zreply->str[0]);
-        printf("[-] initializer: initializing namespace magic %s failed\n", magic);
+        sprintf(replied, "0x%lx", response);
+
+        zdbfs_critical("initializer: initializing namespace magic <%s> failed\n", magic);
         dies("initializer: initial id mismatch (expected 0x00)", replied);
     }
-
-    freeReplyObject(zreply);
 
     return 0;
 }
@@ -1096,9 +1089,9 @@ int zdbfs_inode_init(zdbfs_t *fs) {
 int zdbfs_inode_init_release(zdbfs_t *fs) {
     zdbfs_header_t header;
     zdb_reply_t *reply;
-    redisReply *zreply;
+    uint64_t response;
 
-    zdbfs_debug("[+] filesystem: release in use flag\n");
+    zdbfs_debug("[+] filesystem: release in-use flag\n");
 
     if(!(reply = zdb_get(fs->metactx, 0))) {
         zdbfs_error("[-] filesystem: release: %s\n", "could not fetch header entry");
@@ -1115,12 +1108,10 @@ int zdbfs_inode_init_release(zdbfs_t *fs) {
     // drop in use flags
     header.flags &= ~ZDBFS_FLAGS_IN_USE;
 
-    if(!(zreply = redisCommand(fs->metactx->ctx, "SET %b %b", NULL, 0, &header, sizeof(zdbfs_header_t)))) {
-        zdbfs_critical("inode: init: release: %s", fs->metactx->ctx->errstr);
-        return 1;
+    if((response = zdb_set_initial(fs->metactx, &header, sizeof(zdbfs_header_t), 1)) != 0) {
+        zdbfs_error("filesystem: release: %s\n", "could not update header entry");
     }
 
-    freeReplyObject(zreply);
     zdbfs_zdb_reply_free(reply);
 
     return 0;
@@ -1190,3 +1181,4 @@ char *zdbfs_inode_resolv(fuse_req_t req, fuse_ino_t target, const char *name) {
 
     return path;
 }
+

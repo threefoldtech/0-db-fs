@@ -25,6 +25,9 @@ int zdb_errno = 0;
 
 // update string and free original one if needed
 static char *strup(char *original, char *update) {
+    if(original == update)
+        return original;
+
     if(original)
         free(original);
 
@@ -32,6 +35,59 @@ static char *strup(char *original, char *update) {
         return NULL;
 
     return strdup(update);
+}
+
+static redisContext *zdb_new_ctx(char *host, int port, char *unixsock) {
+    (void) unixsock;
+    redisContext *ctx;
+
+    // FIXME: support unix socket
+
+    if(!(ctx = redisConnect(host, port))) {
+        zdbfs_critical("zdb: connect: [%s:%d]: cannot initialize context", host, port);
+        return NULL;
+    }
+
+    if(ctx->err) {
+        zdbfs_critical("zdb: connect: [%s:%d]: %s", host, port, ctx->errstr);
+        redisFree(ctx);
+        return NULL;
+    }
+
+    return ctx;
+}
+
+zdb_t *zdb_new(char *host, int port, char *unixsock) {
+    redisContext *ctx;
+    zdb_t *zdb;
+
+    if(!(ctx = zdb_new_ctx(host, port, unixsock)))
+        return NULL;
+
+    if(!(zdb = calloc(sizeof(zdb_t), 1)))
+        zdbfs_sysfatal("zdb: calloc");
+
+    zdb->ctx = ctx;
+    zdb->host = strdup(host);
+    zdb->port = port;
+
+    // FIXME: support unix socket
+    // zdb->socket = strup(zdb->socket, unixsock);
+
+    return zdb;
+}
+
+static void zdb_error_recover(zdb_t *remote) {
+    zdbfs_debug("[+] zdb: trying to recover zdb connection\n");
+
+    // cleanup existing context, which is not usable anymore
+    redisFree(remote->ctx);
+
+    // create new context based on previous settings
+    remote->ctx = zdb_new_ctx(remote->host, remote->port, remote->socket);
+
+    // re-select namespace
+    zdb_select(remote, remote->namespace, remote->password);
 }
 
 int zdb_select(zdb_t *remote, char *namespace, char *password) {
@@ -43,6 +99,7 @@ int zdb_select(zdb_t *remote, char *namespace, char *password) {
 
     if(!(reply = redisCommandArgv(remote->ctx, argc, argv, NULL))) {
         zdbfs_critical("zdb: select: %s: %s", namespace, remote->ctx->errstr);
+        zdb_error_recover(remote);
         return 1;
     }
 
@@ -70,6 +127,7 @@ int zdb_nsnew(zdb_t *remote, char *namespace) {
 
     if(!(reply = redisCommandArgv(remote->ctx, argc, argv, NULL))) {
         zdbfs_critical("zdb: nsnew: %s: %s", namespace, remote->ctx->errstr);
+        zdb_error_recover(remote);
         return 1;
     }
 
@@ -92,6 +150,7 @@ int zdb_flush(zdb_t *remote) {
 
     if(!(reply = redisCommandArgv(remote->ctx, 1, argv, NULL))) {
         zdbfs_critical("zdb: %s: flush: %s", remote->namespace, remote->ctx->errstr);
+        zdb_error_recover(remote);
         return 1;
     }
 
@@ -115,6 +174,7 @@ int zdb_nsset(zdb_t *remote, char *namespace, char *setting, char *value) {
 
     if(!(reply = redisCommandArgv(remote->ctx, argc, argv, NULL))) {
         zdbfs_critical("zdb: %s: nsset: %s: %s", remote->namespace, namespace, remote->ctx->errstr);
+        zdb_error_recover(remote);
         return 1;
     }
 
@@ -190,16 +250,16 @@ zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace) {
     zdb_nsinfo_t *nsinfo;
     redisReply *reply;
 
-    if(!(nsinfo = calloc(sizeof(zdb_nsinfo_t), 1)))
-        zdbfs_sysfatal("zdb: nsinfo: calloc");
-
     zdbfs_debug("[+] zdb: nsinfo: request namespace: %s\n", namespace);
 
     if(!(reply = redisCommandArgv(remote->ctx, 2, argv, NULL))) {
         zdbfs_critical("zdb: nsinfo: %s: %s", namespace, remote->ctx->errstr);
-        free(nsinfo);
+        zdb_error_recover(remote);
         return NULL;
     }
+
+    if(!(nsinfo = calloc(sizeof(zdb_nsinfo_t), 1)))
+        zdbfs_sysfatal("zdb: nsinfo: calloc");
 
     nsinfo->entries = zdb_nsinfo_sizeval(reply->str, "entries");
     nsinfo->datasize = zdb_nsinfo_sizeval(reply->str, "data_size_bytes");
@@ -225,6 +285,7 @@ zdb_reply_t *zdb_get(zdb_t *remote, uint64_t id) {
 
     if(!(reply->rreply = redisCommandArgv(remote->ctx, 2, argv, argvl))) {
         zdbfs_critical("zdb: %s: get: id %lu: %s", remote->namespace, id, remote->ctx->errstr);
+        zdb_error_recover(remote);
         free(reply);
         return NULL;
     }
@@ -250,8 +311,6 @@ zdb_reply_t *zdb_get(zdb_t *remote, uint64_t id) {
 
     return reply;
 }
-
-int xxxerror = 0;
 
 uint64_t zdb_set(zdb_t *remote, uint64_t id, const void *buffer, size_t length) {
     redisReply *reply = NULL;
@@ -280,10 +339,7 @@ uint64_t zdb_set(zdb_t *remote, uint64_t id, const void *buffer, size_t length) 
 
         if(!(reply = redisCommandArgv(remote->ctx, 3, argv, argvl))) {
             zdbfs_critical("zdb: %s: set: id %lu: %s", remote->namespace, id, remote->ctx->errstr);
-
-            if(xxxerror++ == 4)
-                exit(1);
-
+            zdb_error_recover(remote);
             return 0;
         }
 
@@ -323,6 +379,58 @@ uint64_t zdb_set(zdb_t *remote, uint64_t id, const void *buffer, size_t length) 
     return response;
 }
 
+// like zdb_set but only support initial entry (id 0)
+uint64_t zdb_set_initial(zdb_t *remote, const void *buffer, size_t length, int update) {
+    redisReply *reply;
+    uint64_t response = 0;
+    char *payload = NULL;
+    size_t size = 0;
+
+    // perform an update on id 0, not an insertion
+    if(update) {
+        // use response as variable to specify id 0
+        payload = (char *) &response;
+        size = sizeof(response);
+    }
+
+    zdbfs_debug("[+] zdb: %s: set initial [id 0]: %lu bytes\n", remote->namespace, length);
+
+    if(!(reply = redisCommand(remote->ctx, "SET %b %b", payload, size, buffer, length))) {
+        zdbfs_critical("zdb: initial set: %s", remote->ctx->errstr);
+        zdb_error_recover(remote);
+        return 1;
+    }
+
+    if(reply->type == REDIS_REPLY_ERROR) {
+        zdbfs_error("zdb: set initial: redis error reply: %s", "undefined");
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    if(reply->type == REDIS_REPLY_NIL) {
+        // if response is zero
+        // this mean entry was not updated (no changes)
+        // but it's a valid a reponse, not an error
+        zdbfs_debug("[+] zdb: %s: set initial: key already up-to-date\n", remote->namespace);
+        freeReplyObject(reply);
+        return 0;
+    }
+
+    if(reply->len != sizeof(response)) {
+        zdbfs_critical("zdb: initial set: wrong response size [length: %lu]", reply->len);
+        freeReplyObject(reply);
+        return 1;
+    }
+
+    // all good, let's see what's the response id (which should be zero)
+    memcpy(&response, reply->str, sizeof(response));
+    zdbfs_debug("[+] zdb: %s: set initial: reponse id: %lu\n", remote->namespace, response);
+
+    freeReplyObject(reply);
+
+    return response;
+}
+
 int zdb_del(zdb_t *remote, uint64_t id) {
     uint64_t bid = id; // htobe64(id);
     char *rid = (char *) &bid;
@@ -340,6 +448,7 @@ int zdb_del(zdb_t *remote, uint64_t id) {
 
         if(!(reply = redisCommandArgv(remote->ctx, 2, argv, argvl))) {
             zdbfs_critical("zdb: %s: del: id %lu: %s", remote->namespace, id, remote->ctx->errstr);
+            zdb_error_recover(remote);
             return 1;
         }
 
@@ -385,38 +494,6 @@ int zdbfs_zdb_create(zdbfs_t *fs) {
     }
 
     return 0;
-}
-
-zdb_t *zdb_new(char *host, int port, char *unixsock) {
-    zdb_t *zdb;
-
-    if(!(zdb = calloc(sizeof(zdb_t), 1)))
-        zdbfs_sysfatal("zdb: calloc");
-
-    // FIXME: support unix socket
-
-    if(!(zdb->ctx = redisConnect(host, port))) {
-        zdbfs_critical("zdb: connect: [%s:%d]", host, port);
-        free(zdb);
-        return NULL;
-    }
-
-    if(zdb->ctx->err) {
-        zdbfs_critical("zdb: metadata: [%s:%d]: %s", host, port, zdb->ctx->errstr);
-        redisFree(zdb->ctx);
-        free(zdb);
-        return NULL;
-    }
-
-    // FIXME: support unix socket
-
-    if(unixsock)
-        zdb->socket = strdup(unixsock);
-
-    zdb->host = strdup(host);
-    zdb->port = port;
-
-    return zdb;
 }
 
 int zdbfs_zdb_connect(zdbfs_t *fs) {

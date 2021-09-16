@@ -618,11 +618,9 @@ size_t zdbfs_cache_temp_cleanup(zdbfs_t *fs) {
         return 0;
 
     if(temp->nextid > 32 && temp->entries == 1) {
-        zdbfs_lowdebug("cache: temporary namespace not empty and not in use: %lu", temp->nextid);
-
         zdb_reply_t *reply;
-        redisReply *zreply;
 
+        zdbfs_lowdebug("cache: temporary namespace not empty and not in use: %lu", temp->nextid);
         zdbfs_lowdebug("cache: %s: backing up temporary namespace header", fs->opts->temp_ns);
 
         if(!(reply = zdb_get(fs->tempctx, 0))) {
@@ -634,15 +632,10 @@ size_t zdbfs_cache_temp_cleanup(zdbfs_t *fs) {
         zdb_flush(fs->tempctx);
 
         zdbfs_lowdebug("cache: %s: restoring temporary namespace header", fs->opts->temp_ns);
-
-        // FIXME ?
-        if(!(zreply = redisCommand(fs->tempctx->ctx, "SET %b %b", NULL, 0, reply->value, reply->length))) {
-            zdbfs_critical("inode: temporary reset: %s", fs->tempctx->ctx->errstr);
+        if(zdb_set_initial(fs->tempctx, reply->value, reply->length, 0) > 0)
             return 1;
-        }
 
         zdbfs_zdb_reply_free(reply);
-        freeReplyObject(zreply);
     }
 
     free(temp);
