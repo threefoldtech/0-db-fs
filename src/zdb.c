@@ -279,6 +279,28 @@ zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace) {
     return nsinfo;
 }
 
+zdb_info_t *zdb_info(zdb_t *remote) {
+    const char *argv[] = {"INFO"};
+    zdb_info_t *info;
+    redisReply *reply;
+
+    zdbfs_debug("[+] zdb: info: request server information\n");
+
+    if(!(reply = redisCommandArgv(remote->ctx, 1, argv, NULL))) {
+        zdbfs_critical("zdb: info: %s: %s", remote->namespace, remote->ctx->errstr);
+        zdb_error_recover(remote);
+        return NULL;
+    }
+
+    if(!(info = calloc(sizeof(zdb_nsinfo_t), 1)))
+        zdbfs_sysfatal("zdb: info: calloc");
+
+    info->seqsize = zdb_nsinfo_sizeval(reply->str, "sequential_key_size");
+
+    freeReplyObject(reply);
+
+    return info;
+}
 
 zdb_reply_t *zdb_get(zdb_t *remote, uint64_t id) {
     uint64_t bid = id; // htobe64(id);

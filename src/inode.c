@@ -1009,6 +1009,15 @@ int zdbfs_inode_init(zdbfs_t *fs) {
 
     zdbfs_debug("[+] filesystem: checking backend\n");
 
+    zdb_info_t *info;
+    if(!(info = zdb_info(fs->metactx)))
+        zdbfs_critical("cannot fetch zdb server information: %s", "error");
+
+    if(info->seqsize != 8) {
+        zdbfs_critical("incompatible version of 0-db: %s", "v2 with 64 bits keys required");
+        exit(EXIT_FAILURE);
+    }
+
     // checking if metadata entry (inode) 0 exists
     if((reply = zdb_get(fs->metactx, 0))) {
         if(zdbfs_header_check(reply->value, reply->length, "ZDBFSM") == 1) {
