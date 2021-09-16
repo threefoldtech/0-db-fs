@@ -39,7 +39,7 @@ jobs:
 
     - name: Build 0-db
       run: |
-        git clone https://github.com/threefoldtech/0-db
+        git clone -b development-v2 https://github.com/threefoldtech/0-db
         cd 0-db/libzdb && make release
         cd ../zdbd && make release
 
@@ -133,7 +133,7 @@ jobs:
 
     - name: Build 0-db
       run: |
-        git clone https://github.com/threefoldtech/0-db
+        git clone -b development-v2 https://github.com/threefoldtech/0-db
         cd 0-db/libzdb && make release
         cd ../zdbd && make release
 
