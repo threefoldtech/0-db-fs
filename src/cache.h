@@ -4,8 +4,8 @@
     int zdbfs_cache_enabled(zdbfs_t *fs);
     double zdbfs_cache_time_now();
 
-    inocache_t *zdbfs_cache_get(fuse_req_t req, uint32_t ino);
-    inocache_t *zdbfs_cache_add(fuse_req_t req, uint32_t ino, zdb_inode_t *inode);
+    inocache_t *zdbfs_cache_get(fuse_req_t req, uint64_t ino);
+    inocache_t *zdbfs_cache_add(fuse_req_t req, uint64_t ino, zdb_inode_t *inode);
     int zdbfs_cache_release(fuse_req_t req, inocache_t *inocache);
     void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache);
 

@@ -12,6 +12,7 @@
 #include <inttypes.h>
 #include <fuse_lowlevel.h>
 #include <hiredis/hiredis.h>
+#include <endian.h>
 #include "zdbfs.h"
 #include "cache.h"
 #include "init.h"
@@ -201,19 +202,21 @@ zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace) {
     return nsinfo;
 }
 
-zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
-    char *rid = (char *) &id;
+
+zdb_reply_t *zdb_get(redisContext *remote, uint64_t id) {
+    uint64_t bid = id; // htobe64(id);
+    char *rid = (char *) &bid;
     const char *argv[] = {"GET", rid};
     size_t argvl[] = {3, sizeof(id)};
     zdb_reply_t *reply;
 
-    zdbfs_debug("[+] zdb: %s: get: request id: %u\n", rnid(remote), id);
+    zdbfs_debug("[+] zdb: %s: get: request id: %lu\n", rnid(remote), id);
 
     if(!(reply = calloc(sizeof(zdb_reply_t), 1)))
         zdbfs_sysfatal("zdb: get: malloc");
 
     if(!(reply->rreply = redisCommandArgv(remote, 2, argv, argvl))) {
-        zdbfs_critical("zdb: %s: get: id %d: %s", rnid(remote), id, remote->errstr);
+        zdbfs_critical("zdb: %s: get: id %lu: %s", rnid(remote), id, remote->errstr);
         free(reply);
         return NULL;
     }
@@ -240,13 +243,15 @@ zdb_reply_t *zdb_get(redisContext *remote, uint32_t id) {
     return reply;
 }
 
-uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t length) {
+uint64_t zdb_set(redisContext *remote, uint64_t id, const void *buffer, size_t length) {
     redisReply *reply = NULL;
-    uint32_t response = 0;
-    uint32_t *rid = &id;
+    uint64_t response = 0;
+    uint64_t bresponse = 0;
+    uint64_t bid = id; // htobe64(id);
+    char *rid = (char *) &bid;
     size_t rsize = sizeof(id);
 
-    zdbfs_debug("[+] zdb: %s: set: update id: %u, %lu bytes\n", rnid(remote), id, length);
+    zdbfs_debug("[+] zdb: %s: set: update id: %lu, %lu bytes\n", rnid(remote), id, length);
 
     // create new entry
     if(id == 0) {
@@ -254,7 +259,7 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         rid = NULL;
     }
 
-    const char *argv[] = {"SET", (char *) rid, buffer};
+    const char *argv[] = {"SET", rid, buffer};
     size_t argvl[] = {3, rsize, length};
 
     do {
@@ -264,7 +269,7 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
         }
 
         if(!(reply = redisCommandArgv(remote, 3, argv, argvl))) {
-            zdbfs_critical("zdb: %s: set: id %d: %s", rnid(remote), id, remote->errstr);
+            zdbfs_critical("zdb: %s: set: id %lu: %s", rnid(remote), id, remote->errstr);
             return 0;
         }
 
@@ -294,8 +299,9 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     }
 
     if(reply->len == sizeof(id)) {
-        memcpy(&response, reply->str, sizeof(id));
-        zdbfs_debug("[+] zdb: %s: set: reponse id: %u\n", rnid(remote), response);
+        memcpy(&bresponse, reply->str, sizeof(id));
+        response = bresponse; // be64toh(bresponse);
+        zdbfs_debug("[+] zdb: %s: set: reponse id: %lu\n", rnid(remote), response);
     }
 
     freeReplyObject(reply);
@@ -303,13 +309,14 @@ uint32_t zdb_set(redisContext *remote, uint32_t id, const void *buffer, size_t l
     return response;
 }
 
-int zdb_del(redisContext *remote, uint32_t id) {
-    char *rid = (char *) &id;
+int zdb_del(redisContext *remote, uint64_t id) {
+    uint64_t bid = id; // htobe64(id);
+    char *rid = (char *) &bid;
     const char *argv[] = {"DEL", rid};
     size_t argvl[] = {3, sizeof(id)};
     redisReply *reply = NULL;
 
-    zdbfs_debug("[+] zdb: %s: del: request id: %u\n", rnid(remote), id);
+    zdbfs_debug("[+] zdb: %s: del: request id: %lu\n", rnid(remote), id);
 
     do {
         if(reply) {
@@ -318,7 +325,7 @@ int zdb_del(redisContext *remote, uint32_t id) {
         }
 
         if(!(reply = redisCommandArgv(remote, 2, argv, argvl))) {
-            zdbfs_critical("zdb: %s: del: id %d: %s", rnid(remote), id, remote->errstr);
+            zdbfs_critical("zdb: %s: del: id %lu: %s", rnid(remote), id, remote->errstr);
             return 1;
         }
 

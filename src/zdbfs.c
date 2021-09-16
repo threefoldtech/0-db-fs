@@ -79,14 +79,14 @@ void zdbfs_log(fuse_req_t req, char *call, const char *fmt, ...) {
 }
 
 // propagate an error to fuse with verbosity
-void zdbfs_fuse_error(fuse_req_t req, int err, uint32_t ino) {
+void zdbfs_fuse_error(fuse_req_t req, int err, uint64_t ino) {
 #ifdef RELEASE
     (void) ino;
 #endif
     zdbfs_t *fs = fuse_req_userdata(req);
     zdbfs_macro_stats_incr(fs, errors);
 
-    zdbfs_debug("[/] syscall: error reply: ino %u: %s\n", ino, strerror(err));
+    zdbfs_debug("[/] syscall: error reply: ino %lu: %s\n", ino, strerror(err));
     fuse_reply_err(req, err);
 }
 
@@ -791,7 +791,7 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
         return zdbfs_fuse_error(req, ENOENT, parent);
     }
 
-    zdbfs_debug("[+] rmdir: entry found, inspecting ino: %u\n", expected->ino);
+    zdbfs_debug("[+] rmdir: entry found, inspecting ino: %lu\n", expected->ino);
 
     if(!(target = zdbfs_inode_fetch(req, expected->ino)))
         return zdbfs_fuse_error(req, ENOENT, expected->ino);

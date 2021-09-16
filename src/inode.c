@@ -46,7 +46,7 @@ void zdbfs_inode_dump(zdb_inode_t *inode) {
 
         for(size_t i = 0; i < dir->length; i++) {
             zdb_direntry_t *entry = dir->entries[i];
-            printf("[+] directory content: %s [%u]\n", entry->name, entry->ino);
+            printf("[+] directory content: %s [%lu]\n", entry->name, entry->ino);
         }
     }
 
@@ -147,7 +147,7 @@ size_t zdbfs_inode_file_size(zdb_inode_t *inode) {
     return length;
 }
 
-zdb_dir_t *zdbfs_dir_new(uint32_t parent) {
+zdb_dir_t *zdbfs_dir_new(uint64_t parent) {
     zdb_dir_t *dir;
 
     // initialize an empty directory in memory
@@ -163,7 +163,7 @@ zdb_dir_t *zdbfs_dir_new(uint32_t parent) {
     return dir;
 }
 
-zdb_inode_t *zdbfs_inode_new_dir(uint32_t parent, uint32_t mode) {
+zdb_inode_t *zdbfs_inode_new_dir(uint64_t parent, uint32_t mode) {
     zdb_dir_t *dir;
     zdb_inode_t *inode;
 
@@ -425,7 +425,7 @@ buffer_t zdbfs_inode_serialize(zdb_inode_t *inode) {
 
 
 
-zdb_direntry_t *zdbfs_direntry_new(uint32_t ino, const char *name) {
+zdb_direntry_t *zdbfs_direntry_new(uint64_t ino, const char *name) {
     zdb_direntry_t *entry;
     size_t namelen = strlen(name);
 
@@ -459,7 +459,7 @@ zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
     return dir;
 }
 
-zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint32_t ino, const char *name) {
+zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint64_t ino, const char *name) {
     zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
     dir = zdbfs_dir_append(dir, zdbfs_direntry_new(ino, name));
     zdbfs_inode_dir_set(inode, dir);
@@ -483,7 +483,7 @@ zdb_blocks_t *zdbfs_inode_blocks_get(zdb_inode_t *inode) {
     return inode->extend[0];
 }
 
-void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inode, uint32_t ino) {
+void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inode, uint64_t ino) {
     memset(param, 0, sizeof(struct fuse_entry_param));
 
     param->ino = ino;
@@ -493,7 +493,7 @@ void zdbfs_inode_to_fuse_param(struct fuse_entry_param *param, zdb_inode_t *inod
     zdbfs_inode_to_stat(&param->attr, inode, ino);
 }
 
-void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode, uint32_t ino) {
+void zdbfs_inode_to_stat(struct stat *st, zdb_inode_t *inode, uint64_t ino) {
     st->st_ino = ino;
     st->st_mode = inode->mode;
     st->st_uid = inode->uid;
@@ -603,9 +603,9 @@ zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     return inode;
 }
 
-uint32_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, uint32_t ino) {
+uint64_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, uint64_t ino) {
     buffer_t save = zdbfs_inode_serialize(inode);
-    uint32_t inoret;
+    uint64_t inoret;
 
     inoret = zdb_set(backend, ino, save.buffer, save.length);
 
@@ -620,14 +620,14 @@ uint32_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, ui
     return inoret;
 }
 
-uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t ino) {
+uint64_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint64_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     inocache_t *inocache;
 
     // if ino is zero, force metadata write, we don't
     // know inoid yet, we need to get one
     if(ino == 0) {
-        uint32_t key = zdbfs_inode_store_backend(fs->metactx, inode, ino);
+        uint64_t key = zdbfs_inode_store_backend(fs->metactx, inode, ino);
         if(key > 0)
             zdbfs_cache_add(req, key, inode);
 
@@ -642,7 +642,7 @@ uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t
     */
 
     if(!(inocache = zdbfs_cache_get(req, ino))) {
-        zdbfs_debug("[+] inode: write request for not cached inode, adding: %u\n", ino);
+        zdbfs_debug("[+] inode: write request for not cached inode, adding: %lu\n", ino);
         if(!zdbfs_cache_add(req, ino, inode)) {
             // cache full, force metadata push
             zdbfs_debug("[+] inode: metadata: store: cache not available, flushing\n");
@@ -656,7 +656,7 @@ uint32_t zdbfs_inode_store_metadata(fuse_req_t req, zdb_inode_t *inode, uint32_t
     return ino;
 }
 
-uint32_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint32_t ino) {
+uint64_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint64_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     return zdbfs_inode_store_backend(fs->datactx, inode, ino);
 }
@@ -787,7 +787,7 @@ int zdbfs_inode_blocks_remove(fuse_req_t req, zdb_inode_t *inode) {
 // returns 0 if unlink succeed
 //         1 on error
 //         2 on reference decremented
-int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
+int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint64_t ino) {
     zdbfs_t *fs = fuse_req_userdata(req);
     inocache_t *cache;
 
@@ -825,7 +825,7 @@ int zdbfs_inode_unlink(fuse_req_t req, zdb_inode_t *file, uint32_t ino) {
     return 2;
 }
 
-zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t ino, uint32_t block) {
+zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint64_t ino, uint32_t block) {
     zdbfs_t *fs = fuse_req_userdata(req);
     zdb_blocks_t *blocks = zdbfs_inode_blocks_get(file);
     uint32_t blockid = blocks->blocks[block];
@@ -865,7 +865,7 @@ zdb_reply_t *zdbfs_inode_block_fetch(fuse_req_t req, zdb_inode_t *file, uint32_t
     return reply;
 }
 
-uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint32_t ino, uint32_t block, const char *buffer, size_t buflen) {
+uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint64_t ino, uint32_t block, const char *buffer, size_t buflen) {
     zdbfs_t *fs = fuse_req_userdata(req);
 
     uint32_t blockid = zdbfs_inode_block_get(inode, block);
@@ -964,7 +964,7 @@ static int zdbfs_header_check(uint8_t *buffer, size_t bufsize, char *magic) {
 
 static int zdbfs_inode_prepare_namespace(redisContext *ctx, zdbfs_header_t *header, char *magic) {
     redisReply *zreply;
-    int expected = 0;
+    uint64_t expected = 0;
 
     // create initial entry
     memcpy(header->magic, magic, sizeof(header->magic));

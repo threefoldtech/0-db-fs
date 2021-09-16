@@ -74,7 +74,7 @@
 
     typedef struct zdb_direntry_t {
         uint16_t size;
-        uint32_t ino;
+        uint64_t ino;
         char name[];
 
     } __attribute__((packed)) zdb_direntry_t;
@@ -87,7 +87,7 @@
 
     typedef struct zdb_inode_t {
         uint32_t mode;
-        uint32_t ino; // FIXME: not needed
+        uint64_t ino; // FIXME: not needed
         uint32_t dev;
         uint16_t uid;
         uint16_t gid;
@@ -111,14 +111,14 @@
         size_t blocksize;   // size allocated in memory
         size_t hits;        // number of hits (access)
         int online;         // data available in memory
-        uint32_t offid;     // offline (temporary) id
+        uint64_t offid;     // offline (temporary) id
         double atime;       // last access time
 
     } blockcache_t;
 
 
     typedef struct inocache_t {
-        uint32_t inoid;         // inode number
+        uint64_t inoid;         // inode number
         size_t ref;             // reference count
         zdb_inode_t *inode;     // pointer to the inode
         double atime;           // last access time
