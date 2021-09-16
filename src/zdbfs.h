@@ -212,10 +212,20 @@
 
     } zdbfs_options;
 
+    typedef struct zdb_t {
+        redisContext *ctx;
+        char *namespace;
+        char *password;
+        char *socket;
+        char *host;
+        int port;
+
+    } zdb_t;
+
     typedef struct zdbfs_t {
-        redisContext *metactx;    // metadata redis context
-        redisContext *datactx;    // block data redis context
-        redisContext *tempctx;    // temporary redis context
+        zdb_t *metactx;    // metadata redis context
+        zdb_t *datactx;    // block data redis context
+        zdb_t *tempctx;    // temporary redis context
 
         inoroot_t *inoroot;       // root inode cache link
 

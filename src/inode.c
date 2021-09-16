@@ -652,7 +652,7 @@ zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
     return inode;
 }
 
-uint64_t zdbfs_inode_store_backend(redisContext *backend, zdb_inode_t *inode, uint64_t ino) {
+uint64_t zdbfs_inode_store_backend(zdb_t *backend, zdb_inode_t *inode, uint64_t ino) {
     buffer_t save = zdbfs_inode_serialize(inode);
     uint64_t inoret;
 
@@ -973,7 +973,7 @@ static int zdbfs_header_check(uint8_t *buffer, size_t bufsize, char *magic) {
     return 0;
 }
 
-static int zdbfs_inode_prepare_namespace(redisContext *ctx, zdbfs_header_t *header, char *magic) {
+static int zdbfs_inode_prepare_namespace(zdb_t *backend, zdbfs_header_t *header, char *magic) {
     redisReply *zreply;
     uint64_t expected = 0;
 
@@ -981,8 +981,8 @@ static int zdbfs_inode_prepare_namespace(redisContext *ctx, zdbfs_header_t *head
     memcpy(header->magic, magic, sizeof(header->magic));
 
     // cannot use zdb_set because id 0 is special
-    if(!(zreply = redisCommand(ctx, "SET %b %b", NULL, 0, header, sizeof(zdbfs_header_t)))) {
-        zdbfs_critical("inode: init: %s", ctx->errstr);
+    if(!(zreply = redisCommand(backend->ctx, "SET %b %b", NULL, 0, header, sizeof(zdbfs_header_t)))) {
+        zdbfs_critical("inode: init: %s", backend->ctx->errstr);
         return 1;
     }
 
@@ -1115,8 +1115,8 @@ int zdbfs_inode_init_release(zdbfs_t *fs) {
     // drop in use flags
     header.flags &= ~ZDBFS_FLAGS_IN_USE;
 
-    if(!(zreply = redisCommand(fs->metactx, "SET %b %b", NULL, 0, &header, sizeof(zdbfs_header_t)))) {
-        zdbfs_critical("inode: init: release: %s", fs->metactx->errstr);
+    if(!(zreply = redisCommand(fs->metactx->ctx, "SET %b %b", NULL, 0, &header, sizeof(zdbfs_header_t)))) {
+        zdbfs_critical("inode: init: release: %s", fs->metactx->ctx->errstr);
         return 1;
     }
 

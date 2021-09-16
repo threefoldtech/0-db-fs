@@ -13,11 +13,11 @@
     int zdbfs_zdb_connect(zdbfs_t *fs);
     void zdbfs_zdb_free(zdbfs_t *fs);
 
-    int zdb_flush(redisContext *remote);
-    zdb_reply_t *zdb_get(redisContext *remote, uint64_t id);
-    uint64_t zdb_set(redisContext *remote, uint64_t id, const void *buffer, size_t length);
-    int zdb_del(redisContext *remote, uint64_t id);
-    zdb_nsinfo_t *zdb_nsinfo(redisContext *remote, char *namespace);
+    int zdb_flush(zdb_t *remote);
+    zdb_reply_t *zdb_get(zdb_t *remote, uint64_t id);
+    uint64_t zdb_set(zdb_t *remote, uint64_t id, const void *buffer, size_t length);
+    int zdb_del(zdb_t *remote, uint64_t id);
+    zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace);
 
     void zdbfs_zdb_reply_free(zdb_reply_t *reply);
 #endif

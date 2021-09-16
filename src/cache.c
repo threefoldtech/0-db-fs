@@ -624,8 +624,9 @@ size_t zdbfs_cache_temp_cleanup(zdbfs_t *fs) {
         redisReply *zreply;
 
         zdbfs_lowdebug("cache: %s: backing up temporary namespace header", fs->opts->temp_ns);
+
         if(!(reply = zdb_get(fs->tempctx, 0))) {
-            zdbfs_critical("cache: delegate: could not get header: %s", fs->tempctx->errstr);
+            zdbfs_critical("cache: delegate: could not get header: %s", fs->tempctx->ctx->errstr);
             return 1;
         }
 
@@ -634,8 +635,9 @@ size_t zdbfs_cache_temp_cleanup(zdbfs_t *fs) {
 
         zdbfs_lowdebug("cache: %s: restoring temporary namespace header", fs->opts->temp_ns);
 
-        if(!(zreply = redisCommand(fs->tempctx, "SET %b %b", NULL, 0, reply->value, reply->length))) {
-            zdbfs_critical("inode: temporary reset: %s", fs->tempctx->errstr);
+        // FIXME ?
+        if(!(zreply = redisCommand(fs->tempctx->ctx, "SET %b %b", NULL, 0, reply->value, reply->length))) {
+            zdbfs_critical("inode: temporary reset: %s", fs->tempctx->ctx->errstr);
             return 1;
         }
 
