@@ -461,8 +461,14 @@ zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
 
 zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint64_t ino, const char *name) {
     zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-    dir = zdbfs_dir_append(dir, zdbfs_direntry_new(ino, name));
+    zdb_direntry_t *entry = zdbfs_direntry_new(ino, name);
+
+    // update payload
+    dir = zdbfs_dir_append(dir, entry);
     zdbfs_inode_dir_set(inode, dir);
+
+    // update inode size
+    inode->size += zdbfs_direntry_size(entry);
 
     return dir;
 }
@@ -685,6 +691,10 @@ int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
         return 1;
 
     zdbfs_debug("[+] inode: remove entry: entry found (index: %ld), deleting\n", index);
+
+    // update inode size
+    zdb_direntry_t *entry = dir->entries[index];
+    inode->size -= zdbfs_direntry_size(entry);
 
     // cleanup that entry
     free(dir->entries[index]);
