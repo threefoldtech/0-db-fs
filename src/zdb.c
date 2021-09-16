@@ -50,8 +50,9 @@ static redisContext *zdb_new_ctx(char *host, int port, char *unixsock) {
 
     if(ctx->err) {
         zdbfs_critical("zdb: connect: [%s:%d]: %s", host, port, ctx->errstr);
-        redisFree(ctx);
-        return NULL;
+        // we keep going, the context is still valid and will trigger
+        // an error on usage, but this is not fatal
+        return ctx;
     }
 
     return ctx;
@@ -85,6 +86,14 @@ static void zdb_error_recover(zdb_t *remote) {
 
     // create new context based on previous settings
     remote->ctx = zdb_new_ctx(remote->host, remote->port, remote->socket);
+
+    // context is created but connection is in error
+    // we won't be able to perform a SELECT after that
+    //
+    // we silently ignore that and next call will trigger
+    // an error and a reconnection will be attempted at that moment
+    if(remote->ctx->err == REDIS_ERR_IO)
+        return;
 
     // re-select namespace
     zdb_select(remote, remote->namespace, remote->password);
@@ -504,6 +513,10 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     if(!(fs->metactx = zdb_new(fs->opts->meta_host, fs->opts->meta_port, NULL)))
         return 1;
 
+    // could not initialize connection
+    if(fs->metactx->ctx->err == REDIS_ERR_IO)
+        return 1;
+
     //
     // data
     //
@@ -512,12 +525,20 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     if(!(fs->datactx = zdb_new(fs->opts->data_host, fs->opts->data_port, NULL)))
         return 1;
 
+    // could not initialize connection
+    if(fs->datactx->ctx->err == REDIS_ERR_IO)
+        return 1;
+
     //
     // temporary blocks
     //
     zdbfs_debug("[+] zdb: connecting temporary zdb [%s, %d]\n", fs->opts->temp_host, fs->opts->temp_port);
 
     if(!(fs->tempctx = zdb_new(fs->opts->temp_host, fs->opts->temp_port, NULL)))
+        return 1;
+
+    // could not initialize connection
+    if(fs->tempctx->ctx->err == REDIS_ERR_IO)
         return 1;
 
     //
