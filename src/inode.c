@@ -473,6 +473,49 @@ zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint64_t ino, const char *
     return dir;
 }
 
+static ssize_t zdbfs_inode_lookup_direntry_index(zdb_inode_t *inode, const char *name) {
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    return zdbfs_inode_lookup_direntry_bi(dir, name);
+}
+
+zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name) {
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    ssize_t index = zdbfs_inode_lookup_direntry_bi(dir, name);
+
+    if(index < 0)
+        return NULL;
+
+    return dir->entries[index];
+}
+
+int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    ssize_t index;
+
+    // lookup for entry index
+    if((index = zdbfs_inode_lookup_direntry_index(inode, name)) < 0)
+        return 1;
+
+    zdbfs_debug("[+] inode: remove entry: entry found (index: %ld), deleting\n", index);
+
+    // update inode size
+    zdb_direntry_t *entry = dir->entries[index];
+    inode->size -= zdbfs_direntry_size(entry);
+
+    // cleanup that entry
+    free(dir->entries[index]);
+
+    // compute nex array size
+    size_t length = (dir->length - index - 1) * sizeof(zdb_direntry_t *);
+    zdbfs_debug("[+] inode: remove entry: shifting %lu bytes\n", length);
+
+    // shift array to the left
+    memmove(dir->entries + index, dir->entries + index + 1, length);
+    dir->length -= 1;
+
+    return 0;
+}
+
 //
 // accessors
 //
@@ -667,48 +710,6 @@ uint64_t zdbfs_inode_store_data(fuse_req_t req, zdb_inode_t *inode, uint64_t ino
     return zdbfs_inode_store_backend(fs->datactx, inode, ino);
 }
 
-static ssize_t zdbfs_inode_lookup_direntry_index(zdb_inode_t *inode, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-    return zdbfs_inode_lookup_direntry_bi(dir, name);
-}
-
-zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-    ssize_t index = zdbfs_inode_lookup_direntry_bi(dir, name);
-
-    if(index < 0)
-        return NULL;
-
-    return dir->entries[index];
-}
-
-int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-    ssize_t index;
-
-    // lookup for entry index
-    if((index = zdbfs_inode_lookup_direntry_index(inode, name)) < 0)
-        return 1;
-
-    zdbfs_debug("[+] inode: remove entry: entry found (index: %ld), deleting\n", index);
-
-    // update inode size
-    zdb_direntry_t *entry = dir->entries[index];
-    inode->size -= zdbfs_direntry_size(entry);
-
-    // cleanup that entry
-    free(dir->entries[index]);
-
-    // compute nex array size
-    size_t length = (dir->length - index - 1) * sizeof(zdb_direntry_t *);
-    zdbfs_debug("[+] inode: remove entry: shifting %lu bytes\n", length);
-
-    // shift array to the left
-    memmove(dir->entries + index, dir->entries + index + 1, length);
-    dir->length -= 1;
-
-    return 0;
-}
 
 //
 // regular files
