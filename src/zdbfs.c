@@ -1045,8 +1045,10 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
     uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
     size_t fragment = 1024;  // optional, could be 1 and no division
 
-    // maximum inodes is uint32_t maximun value
-    // (maximum keys available on namespace)
+    // maximum inodes is uint64_t maximun value
+    // (maximum keys available on namespace), which is quite high
+    // we report 1 TB which is already a lot, but this limit is not
+    // a real limit
 
     // available inodes is total inodes without
     // current amount of entries
@@ -1058,9 +1060,9 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
         .f_blocks = sizefs / fragment,
         .f_bfree = (sizefs - data->datasize) / fragment,
         .f_bavail = (sizefs - data->datasize) / fragment,
-        .f_files = 0xffffffff,
-        .f_ffree = 0xffffffff - metadata->entries,
-        .f_favail = 0xffffffff - metadata->entries,
+        .f_files = 0xffffffffff,
+        .f_ffree = 0xffffffffff - metadata->entries,
+        .f_favail = 0xffffffffff - metadata->entries,
         .f_fsid = 1,
         .f_flag = 0,
         .f_namemax = 255,
