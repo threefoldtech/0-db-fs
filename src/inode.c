@@ -1018,6 +1018,8 @@ int zdbfs_inode_init(zdbfs_t *fs) {
         exit(EXIT_FAILURE);
     }
 
+    free(info);
+
     // checking if metadata entry (inode) 0 exists
     if((reply = zdb_get(fs->metactx, 0))) {
         if(zdbfs_header_check(reply->value, reply->length, "ZDBFSM") == 1) {
