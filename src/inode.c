@@ -41,13 +41,26 @@ void zdbfs_inode_dump(zdb_inode_t *inode) {
         printf("[+] inode type: unix socket\n");
 
     if(S_ISDIR(inode->mode)) {
-        zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-        printf("[+] directory length: %u\n", dir->length);
+        zdb_dir_root_t *root = zdbfs_inode_dir_root_get(inode);
+        size_t dirtotal = 0;
 
-        for(size_t i = 0; i < dir->length; i++) {
-            zdb_direntry_t *entry = dir->entries[i];
-            printf("[+] directory content: %s [%lu]\n", entry->name, entry->ino);
+        for(size_t d = 0; d < DIRLIST_SIZE; d++) {
+            zdb_dir_t *dir = root->dirlist[d];
+
+            if(dir == NULL)
+                continue;
+
+            printf("[+] directory dirlist %lu\n", d);
+            printf("[+]   list length: %u\n", dir->length);
+
+            for(size_t i = 0; i < dir->length; i++) {
+                zdb_direntry_t *entry = dir->entries[i];
+                printf("[+]   -- entry: %s [%lu]\n", entry->name, entry->ino);
+                dirtotal += 1;
+            }
         }
+
+        printf("[+] directory total entries: %lu\n", dirtotal);
     }
 
     if(S_ISREG(inode->mode)) {
@@ -117,8 +130,7 @@ size_t zdbfs_direntry_size(zdb_direntry_t *entry) {
 }
 
 size_t zdbfs_inode_dir_size(zdb_dir_t *dir) {
-    size_t length = sizeof(zdb_inode_t);
-    length += sizeof(zdb_dir_t);
+    size_t length = sizeof(zdb_dir_header_t);
 
     for(size_t i = 0; i < dir->length; i++)
         length += zdbfs_direntry_size(dir->entries[i]);
@@ -129,7 +141,7 @@ size_t zdbfs_inode_dir_size(zdb_dir_t *dir) {
 static zdb_dir_t *zdbfs_dir_resize(zdb_dir_t *dir, uint32_t length) {
     size_t dirsize = sizeof(zdb_direntry_t *) * length;
 
-    if(!(dir = realloc(dir, sizeof(zdb_dir_t) + dirsize)))
+    if(!(dir->entries = realloc(dir->entries, dirsize)))
         zdbfs_sysfatal("inode: dir: append: realloc");
 
     dir->length = length;
@@ -147,31 +159,43 @@ size_t zdbfs_inode_file_size(zdb_inode_t *inode) {
     return length;
 }
 
-zdb_dir_t *zdbfs_dir_new(uint64_t parent) {
+zdb_dir_t *zdbfs_dir_new() {
     zdb_dir_t *dir;
 
     // initialize an empty directory in memory
-    if(!(dir = malloc(sizeof(zdb_dir_t))))
+    if(!(dir = calloc(sizeof(zdb_dir_t), 1)))
         zdbfs_sysfatal("inode: dir: new: malloc");
-
-    // fill it with the 2 default entries
-    // at two first hardcoded position
-    dir = zdbfs_dir_resize(dir, 2);
-    dir->entries[0] = zdbfs_direntry_new(parent, ".");
-    dir->entries[1] = zdbfs_direntry_new(parent, "..");
 
     return dir;
 }
 
+zdb_dir_root_t *zdbfs_dir_root_new(uint64_t parent) {
+    zdb_dir_root_t *root;
+    size_t index;
+
+    if(!(root = calloc(sizeof(zdb_dir_root_t), 1)))
+        zdbfs_sysfatal("inode: dir: root: new: malloc");
+
+    index = zdbfs_inode_dirlist_id(".");
+    root->dirlist[index] = zdbfs_dir_new();
+    root->dirlist[index] = zdbfs_dir_append(root->dirlist[index], zdbfs_direntry_new(parent, "."));
+
+    index = zdbfs_inode_dirlist_id("..");
+    root->dirlist[index] = zdbfs_dir_new();
+    root->dirlist[index] = zdbfs_dir_append(root->dirlist[index], zdbfs_direntry_new(parent, ".."));
+
+    return root;
+}
+
 zdb_inode_t *zdbfs_inode_new_dir(uint64_t parent, uint32_t mode) {
-    zdb_dir_t *dir;
+    zdb_dir_root_t *dir;
     zdb_inode_t *inode;
 
     // create empty directory
-    dir = zdbfs_dir_new(parent);
+    dir = zdbfs_dir_root_new(parent);
 
     // create empty inode
-    if(!(inode = calloc(sizeof(zdb_inode_t) + sizeof(zdb_dir_t *), 1)))
+    if(!(inode = calloc(sizeof(zdb_inode_t) + sizeof(zdb_dir_root_t *), 1)))
         zdbfs_sysfatal("inode: newdir: calloc");
 
     // set inode and link directory to it
@@ -180,7 +204,7 @@ zdb_inode_t *zdbfs_inode_new_dir(uint64_t parent, uint32_t mode) {
     inode->atime = inode->ctime;
     inode->mtime = inode->ctime;
 
-    zdbfs_inode_dir_set(inode, dir);
+    zdbfs_inode_dir_root_set(inode, dir);
 
     return inode;
 }
@@ -190,7 +214,7 @@ zdb_inode_t *zdbfs_inode_new_dir(uint64_t parent, uint32_t mode) {
 //
 // binary search files inside directory files list
 static ssize_t zdbfs_inode_lookup_direntry_bi(zdb_dir_t *dir, const char *name) {
-    int low = 2;
+    int low = 0;
     int high = dir->length - 1;
     int compare;
 
@@ -211,8 +235,7 @@ static ssize_t zdbfs_inode_lookup_direntry_bi(zdb_dir_t *dir, const char *name) 
 
 // compute insertion index with binary search
 static int zdbfs_inode_dir_append_index(zdb_dir_t *dir, int len, char *name) {
-    // skip initial . and ..
-    int low = 2;
+    int low = 0;
     int high = len;
 
     while(low < high) {
@@ -230,33 +253,87 @@ static int zdbfs_inode_dir_append_index(zdb_dir_t *dir, int len, char *name) {
 //
 // deserializer
 //
-zdb_inode_t *zdbfs_inode_deserialize_dir(zdb_inode_t *inode, uint8_t *buffer, size_t length) {
-    (void) length;
-    zdb_dir_t *dir, *xdir;
+static zdb_dir_t *zdbfs_inode_deserialize_dir_entries(uint8_t *buffer, size_t length) {
+    zdb_dir_header_t *header;
+    zdb_dir_t *dir;
 
-    //
-    // directory deserialize
-    //
-    dir = (zdb_dir_t *) (buffer + sizeof(zdb_inode_t));
-    size_t dirlen = sizeof(zdb_dir_t) + (sizeof(zdb_direntry_t *) * dir->length);
+    header = (zdb_dir_header_t *) buffer;
+    // zdbfs_system_fulldump(buffer, length);
 
-    if(!(dir = malloc(dirlen)))
-        zdbfs_sysfatal("inode: deserialize: dir: malloc");
+    if(!(dir = calloc(sizeof(zdb_dir_t), 1)))
+        zdbfs_sysfatal("inode: deserialize: dir entries: calloc");
 
-    // link this directory contents to inode
-    inode->extend[0] = dir;
-    xdir = (zdb_dir_t *) (buffer + sizeof(zdb_inode_t));
-    dir->length = xdir->length;
+    if(!(dir->entries = calloc(sizeof(zdb_direntry_t *), header->length)))
+        zdbfs_sysfatal("inode: deserialize: dir entries list: calloc");
 
-    uint8_t *ptr = (uint8_t *) &xdir->entries[0];
+    uint8_t *ptr = buffer + sizeof(zdb_dir_header_t);
 
-    for(size_t i = 0; i < dir->length; i++) {
+    // zdbfs_system_fulldump(ptr, length - sizeof(zdb_dir_header_t));
+    // printf("DESERIALIZE %u ENTRIES\n", header->length);
+
+    for(size_t i = 0; i < header->length; i++) {
         zdb_direntry_t *entry = (zdb_direntry_t *) ptr;
         size_t entlen = zdbfs_direntry_size(entry);
 
         dir->entries[i] = zdbfs_direntry_new(entry->ino, entry->name);
+        dir->length += 1;
+
+        // printf("<-> %lu | %s\n", dir->entries[i]->ino, dir->entries[i]->name);
         ptr += entlen;
     }
+
+    return dir;
+}
+
+zdb_dir_t *zdbfs_inode_fetch_dir_entries(zdb_t *backend, uint64_t id) {
+    zdb_reply_t *reply;
+    zdb_dir_t *dir;
+
+    if(!(reply = zdb_get(backend, id)))
+        return NULL;
+
+    if(!(dir = zdbfs_inode_deserialize_dir_entries(reply->value, reply->length))) {
+        zdbfs_zdb_reply_free(reply);
+        return NULL;
+    }
+
+    zdbfs_zdb_reply_free(reply);
+
+    // link dirlist entry id
+    dir->ino = id;
+
+    return dir;
+}
+
+zdb_inode_t *zdbfs_inode_deserialize_dir(zdb_t *backend, zdb_inode_t *inode, uint8_t *buffer, size_t length) {
+    (void) length;
+    zdb_dir_root_serial_t *serial = (zdb_dir_root_serial_t *) (buffer + sizeof(zdb_inode_t));
+    zdb_dir_root_t *root;
+
+    if(!(root = calloc(sizeof(zdb_dir_root_t), 1)))
+        zdbfs_sysfatal("inode: deserialize: dir root: calloc");
+
+    // link root list to inode extend
+    inode->extend[0] = root;
+
+    for(size_t i = 0; i < DIRLIST_SIZE; i++) {
+        if(serial->dirlist[i] == 0x4242424242424242)
+            continue;
+
+        zdb_dir_t *dirlist;
+
+        // printf("<< %lx\n", serial->dirlist[i]);
+        // printf("FETCHING dirlist %lx\n", serial->dirlist[i]);
+
+        if(!(dirlist = zdbfs_inode_fetch_dir_entries(backend, serial->dirlist[i]))) {
+            zdbfs_critical("[-] inode: deserializer: could not fetch dirlist id %lu\n", serial->dirlist[i]);
+            continue;
+        }
+
+        root->dirlist[i] = dirlist;
+    }
+
+    // zdbfs_inode_dump(inode);
 
     return inode;
 }
@@ -283,7 +360,7 @@ zdb_inode_t *zdbfs_inode_deserialize_symlink(zdb_inode_t *inode, uint8_t *buffer
     return inode;
 }
 
-zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
+zdb_inode_t *zdbfs_inode_deserialize(zdb_t *backend, uint8_t *buffer, size_t length) {
     zdb_inode_t *inode;
 
     if(length < sizeof(zdb_inode_t))
@@ -306,7 +383,7 @@ zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length) {
         return zdbfs_inode_deserialize_file(inode, buffer, length);
 
     // handling everything else as file
-    return zdbfs_inode_deserialize_dir(inode, buffer, length);
+    return zdbfs_inode_deserialize_dir(backend, inode, buffer, length);
 }
 
 
@@ -368,11 +445,46 @@ buffer_t zdbfs_inode_serialize_symlink(zdb_inode_t *inode) {
     return buffer;
 }
 
-buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
+zdb_dir_t *zdbfs_inode_serialize_dir_entries(zdb_t *backend, zdb_dir_t *dir) {
+    size_t inolen = zdbfs_inode_dir_size(dir);
+    uint8_t *serial;
+
+    if(!(serial = calloc(inolen, 1)))
+        zdbfs_sysfatal("inode: serialize: dir entries: malloc");
+
+    // copy original content of zdb_dir_t header
+    memcpy(serial, dir, sizeof(zdb_dir_header_t));
+    uint8_t *ptr = serial + sizeof(zdb_dir_header_t);
+
+    // copying content of each direntries
+    for(size_t i = 0; i < dir->length; i++) {
+        zdb_direntry_t *entry = dir->entries[i];
+        // zdbfs_debug("[+] inode: serialier: direntry: %s\n", entry->name);
+
+        size_t length = zdbfs_direntry_size(entry);
+
+        memcpy(ptr, entry, length);
+        ptr += length;
+    }
+
+    // zdbfs_system_fulldump(serial, inolen);
+
+    uint64_t key;
+    if((key = zdb_set(backend, dir->ino, serial, inolen)) != dir->ino) {
+        zdbfs_critical("could not update directory list id %lu", dir->ino);
+        return NULL;
+    }
+
+    free(serial);
+
+    return dir;
+}
+
+buffer_t zdbfs_inode_serialize_dir(zdb_t *backend, zdb_inode_t *inode) {
     buffer_t buffer;
     zdb_inode_t *serial;
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
-    size_t inolen = zdbfs_inode_dir_size(dir);
+    zdb_dir_root_t *dir = zdbfs_inode_dir_root_get(inode);
+    size_t inolen = sizeof(zdb_inode_t) + sizeof(zdb_dir_root_serial_t);
 
     if(!(serial = malloc(inolen)))
         zdbfs_sysfatal("inode: serialize: dir: malloc");
@@ -383,28 +495,51 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
     // first copy the inode data
     memcpy(serial, inode, sizeof(zdb_inode_t));
 
-    // then copy the dir struct
-    zdb_dir_t local = {.length = 0};
+    // point serial root to buffer
+    zdb_dir_root_serial_t *serialist = (zdb_dir_root_serial_t *) &serial->extend[0];
 
-    // then copy each directory entries
-    uint8_t *ptr = (uint8_t *) serial + sizeof(zdb_inode_t) + sizeof(zdb_dir_t);
+    // building the list map based on memory representation
+    // each list entry have an inode number stored, which can
+    // be zero (not yet defined) or something, if it's set to
+    // something that mean it's already in the backend and can
+    // be updated
+    //
+    // basically that map will match between list id and list
+    // entry in the backend (serialized):
+    //   list 0: 0x00  --  not set
+    //   list 1: 0x00  --  not set
+    //   list 2: 0x87  --  entry 0x87 in the backend
+    //   list 3: 0xaf  --  entry 0xaf in the backend
+    //   list 4: 0x00  --  not set
+    //   ...
+    //
+    // in memory, or the list is NULL (not yet used), or allocated
+    // and allocation contains inode number (zero or defined)
+    for(size_t i = 0; i < DIRLIST_SIZE; i++) {
+        zdb_dir_t *dirlist;
 
-    for(size_t i = 0; i < dir->length; i++) {
-        zdb_direntry_t *entry = dir->entries[i];
+        if((dirlist = dir->dirlist[i]) == NULL)
+            continue;
 
-        size_t length = zdbfs_direntry_size(entry);
+        zdbfs_debug("[+] inode: serializing directory list: %lu\n", i);
 
-        memcpy(ptr, entry, length);
-        ptr += length;
+        if(dirlist->ino == 0) {
+            zdbfs_debug("[+] inode: serializer: no ino set yet for dirlist, creating a new one\n");
+            uint64_t key = zdb_set(backend, 0, "L", 1);
 
-        // count entries
-        local.length += 1;
+            // printf("key attributed = %lu\n", key);
+            dirlist->ino = key;
+        }
+
+        // set inode id to serialized buffer
+        serialist->dirlist[i] = dirlist->ino;
+
+        // push list to backend (won't be updated if it's the same)
+        if(!zdbfs_inode_serialize_dir_entries(backend, dirlist))
+            zdbfs_critical("inode: serializer: dir: list %lu serialization failed", i);
     }
 
-    // copy dir header (count)
-    memcpy(&serial->extend[0], &local, sizeof(zdb_dir_t));
-
-    // zdbd_fulldump(serial, inolen);
+    // zdbfs_system_fulldump(serial, inolen);
 
     buffer.buffer = serial;
     buffer.length = inolen;
@@ -413,9 +548,9 @@ buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode) {
 
 }
 
-buffer_t zdbfs_inode_serialize(zdb_inode_t *inode) {
+buffer_t zdbfs_inode_serialize(zdb_t *backend, zdb_inode_t *inode) {
     if(S_ISDIR(inode->mode))
-        return zdbfs_inode_serialize_dir(inode);
+        return zdbfs_inode_serialize_dir(backend, inode);
 
     if(S_ISLNK(inode->mode))
         return zdbfs_inode_serialize_symlink(inode);
@@ -439,9 +574,21 @@ zdb_direntry_t *zdbfs_direntry_new(uint64_t ino, const char *name) {
     return entry;
 }
 
+static zdb_dir_t *zdbfs_dir_append_to_empty(zdb_dir_t *dir, zdb_direntry_t *entry) {
+    // set initial size to 1 and assign entry
+    dir = zdbfs_dir_resize(dir, 1);
+    dir->entries[0] = entry;
+
+    return dir;
+}
+
 zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
+    // special case if zdb_dir_t is empty
+    if(dir->length == 0)
+        return zdbfs_dir_append_to_empty(dir, entry);
+
     // resize directory (grow up)
-    dir = zdbfs_dir_resize(dir, dir->length + 1);
+    zdbfs_dir_resize(dir, dir->length + 1);
 
     // compute index where to insert (ordered) entry
     ssize_t index = zdbfs_inode_dir_append_index(dir, dir->length - 1, entry->name);
@@ -460,12 +607,11 @@ zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry) {
 }
 
 zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint64_t ino, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode, name);
     zdb_direntry_t *entry = zdbfs_direntry_new(ino, name);
 
     // update payload
-    dir = zdbfs_dir_append(dir, entry);
-    zdbfs_inode_dir_set(inode, dir);
+    zdbfs_dir_append(dir, entry);
 
     // update inode size
     inode->size += zdbfs_direntry_size(entry);
@@ -474,12 +620,12 @@ zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint64_t ino, const char *
 }
 
 static ssize_t zdbfs_inode_lookup_direntry_index(zdb_inode_t *inode, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode, name);
     return zdbfs_inode_lookup_direntry_bi(dir, name);
 }
 
 zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode, name);
     ssize_t index = zdbfs_inode_lookup_direntry_bi(dir, name);
 
     if(index < 0)
@@ -489,7 +635,7 @@ zdb_direntry_t *zdbfs_inode_lookup_direntry(zdb_inode_t *inode, const char *name
 }
 
 int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    zdb_dir_t *dir = zdbfs_inode_dir_get(inode, name);
     ssize_t index;
 
     // lookup for entry index
@@ -519,13 +665,29 @@ int zdbfs_inode_remove_entry(zdb_inode_t *inode, const char *name) {
 //
 // accessors
 //
-zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode) {
+zdb_dir_root_t *zdbfs_inode_dir_root_get(zdb_inode_t *inode) {
     return inode->extend[0];
 }
 
-zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir) {
-    inode->extend[0] = dir;
-    return dir;
+zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode, const char *name) {
+    // compute dirlist index from name
+    size_t index = zdbfs_inode_dirlist_id(name);
+
+    // grab root dirlist from inode
+    zdb_dir_root_t *root = zdbfs_inode_dir_root_get(inode);
+
+    if(root->dirlist[index] == NULL) {
+        if(!(root->dirlist[index] = zdbfs_dir_new()))
+            return NULL;
+    }
+
+    // match on the correct dirlist based on index
+    return root->dirlist[index];
+}
+
+zdb_dir_root_t *zdbfs_inode_dir_root_set(zdb_inode_t *inode, zdb_dir_root_t *root) {
+    inode->extend[0] = root;
+    return root;
 }
 
 zdb_blocks_t *zdbfs_inode_blocks_get(zdb_inode_t *inode) {
@@ -569,7 +731,18 @@ void zdbfs_dir_free(zdb_dir_t *dir) {
     for(size_t i = 0; i < dir->length; i++)
         free(dir->entries[i]);
 
+    free(dir->entries);
     free(dir);
+}
+
+void zdbfs_dir_root_free(zdb_dir_root_t *root) {
+    for(size_t d = 0; d < DIRLIST_SIZE; d++) {
+        // free dirlist if existing
+        if(root->dirlist[d] != NULL)
+            zdbfs_dir_free(root->dirlist[d]);
+    }
+
+    free(root);
 }
 
 void zdbfs_inode_free(zdb_inode_t *inode) {
@@ -579,7 +752,7 @@ void zdbfs_inode_free(zdb_inode_t *inode) {
 
     if(S_ISDIR(inode->mode)) {
         // free directory entries
-        zdbfs_dir_free(inode->extend[0]);
+        zdbfs_dir_root_free(inode->extend[0]);
     }
 
     if(S_ISREG(inode->mode)) {
@@ -608,7 +781,7 @@ zdb_inode_t *zdbfs_inode_fetch_backend(fuse_req_t req, fuse_ino_t ino) {
         return NULL;
     }
 
-    zdb_inode_t *inode = zdbfs_inode_deserialize(reply->value, reply->length);
+    zdb_inode_t *inode = zdbfs_inode_deserialize(fs->metactx, reply->value, reply->length);
     zdbfs_zdb_reply_free(reply);
 
     return inode;
@@ -653,7 +826,7 @@ zdb_inode_t *zdbfs_directory_fetch(fuse_req_t req, fuse_ino_t ino) {
 }
 
 uint64_t zdbfs_inode_store_backend(zdb_t *backend, zdb_inode_t *inode, uint64_t ino) {
-    buffer_t save = zdbfs_inode_serialize(inode);
+    buffer_t save = zdbfs_inode_serialize(backend, inode);
     uint64_t inoret;
 
     inoret = zdb_set(backend, ino, save.buffer, save.length);
@@ -944,6 +1117,18 @@ uint32_t zdbfs_inode_block_store(fuse_req_t req, zdb_inode_t *inode, uint64_t in
     return blockid;
 }
 
+// FIXME: maybe try to optimize this
+size_t zdbfs_inode_dirlist_id(const char *name) {
+    size_t acc = 0;
+    size_t len = strlen(name);
+
+    for(size_t i = 0; i < len; i++)
+        acc += name[i];
+
+    // printf(">> %lu\n", acc % DIRLIST_SIZE);
+    return acc % DIRLIST_SIZE;
+}
+
 static int zdbfs_header_check(uint8_t *buffer, size_t bufsize, char *magic) {
     zdbfs_header_t source;
 
@@ -1009,6 +1194,18 @@ int zdbfs_inode_init(zdbfs_t *fs) {
 
     zdbfs_debug("[+] filesystem: checking backend\n");
 
+    // check for zdb compatibility
+    zdb_info_t *info;
+    if(!(info = zdb_info(fs->metactx)))
+        zdbfs_critical("cannot fetch zdb server information: %s", "error");
+
+    if(info->seqsize != 8) {
+        zdbfs_critical("incompatible version of 0-db: %s", "v2 with 64 bits keys required");
+        exit(EXIT_FAILURE);
+    }
+
+    free(info);
+
     // checking if metadata entry (inode) 0 exists
     if((reply = zdb_get(fs->metactx, 0))) {
         if(zdbfs_header_check(reply->value, reply->length, "ZDBFSM") == 1) {
@@ -1037,11 +1234,20 @@ int zdbfs_inode_init(zdbfs_t *fs) {
     // create initial root directory (if not there)
     //
     if(!(reply = zdb_get(fs->metactx, 1))) {
+        uint64_t id;
+
         zdbfs_debug("[+] filesystem: creating root directory\n");
 
         zdb_inode_t *inode = zdbfs_inode_new_dir(1, 0755);
-        if(zdbfs_inode_store_backend(fs->metactx, inode, 0) != 1)
-            dies("could not create root directory", "xx");
+
+        // create fake object to register id 1 in the backend
+        // otherwise directory entries will takes entry 1 first
+        if((id = zdb_set(fs->metactx, 0, "X", 1)) != 1)
+            dies("could not create root entry in the backend", "initial");
+
+        // save root entry in the backend
+        if(zdbfs_inode_store_backend(fs->metactx, inode, 1) != 1)
+            dies("could not create root directory", "initial");
 
         zdbfs_inode_free(inode);
 
@@ -1152,7 +1358,7 @@ char *zdbfs_inode_resolv(fuse_req_t req, fuse_ino_t target, const char *name) {
             return strdup("");
         }
 
-        zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+        zdb_dir_t *dir = zdbfs_inode_dir_get(inode, name);
 
         for(uint32_t i = 0; i < dir->length; i++) {
             if(dir->entries[i]->ino == target) {

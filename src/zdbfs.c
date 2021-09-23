@@ -262,9 +262,8 @@ static void zdbfs_fuse_mkdir(fuse_req_t req, fuse_ino_t parent, const char *name
 
 static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_t off, struct fuse_file_info *fi) {
     zdbfs_t *fs = fuse_req_userdata(req);
-    (void) fi;
     volino zdb_inode_t *inode = NULL;
-    off_t limit = 0;
+    (void) fi;
 
     zdbfs_syscall("readdir", "ino: %lu, size: %lu, offset: %ld", ino, size, off);
     zdbfs_macro_stats_incr(fs, syscall_readdir);
@@ -275,7 +274,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     }
 
     if(!(inode = zdbfs_directory_fetch(req, ino))) {
-        printf("FAILED\n");
+        zdbfs_critical("[-] readdir: failed to fetch inode %lu\n", ino);
         return;
     }
 
@@ -284,55 +283,91 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 
     // fillin direntry with inode contents
     zdbfs_debug("[+] readdir: %lu: okay, fillin entries\n", ino);
-    zdb_dir_t *dir = zdbfs_inode_dir_get(inode);
+    zdb_dir_root_t *root = zdbfs_inode_dir_root_get(inode);
 
-    zdbfs_debug("[+] readdir: total entries: %u\n", dir->length);
+    // fuse documentation says that 'off_t off' is an arbitrary offset
+    // used to know from where to start to read the directory content, this
+    // offset is for and by us, to keep track of directory position when multiple
+    // calls are made because the buffer cannot be filled in one shot
+    //
+    // this offset needs to contains enough information to know from where to start
+    // and cannot be a simple index since it needs to be able to send a list even if
+    // that list is modified between calls, we won't really support this and use
+    // that offset with some trick
+    //
+    // in order to know where to jump instantly, 'off' is a 64 bits unsigned integer,
+    // we will set the dirlist entry as first byte and use the rest list index
+    //
+    // 0xaabbbbbbbbbbbbbb
+    //   ^^^^^^^^^^^^^^^^
+    //   | +- list entry index
+    //   +- dirlist index
+
+    size_t diroff = (off & 0xff00000000000000) >> 56;
+    size_t entoff = (off & 0x00ffffffffffffff);
+
+    zdbfs_lowdebug("[+] readdir: offset: %lx, dirlist: %lu, entry: %lu", off, diroff, entoff);
 
     buffer_t buffer;
-    buffer.length = 0;
+    buffer.length = size;
 
-    if(off >= dir->length) {
-        fuse_reply_buf(req, NULL, 0);
-        return;
-    }
+    // temp stat buffer to hold ino number
+    struct stat stbuf;
+    memset(&stbuf, 0, sizeof(stbuf));
 
-    // first pass: computing total size
-    for(off_t i = off; i < dir->length; i++) {
-        zdb_direntry_t *entry = dir->entries[i];
-        size_t entlen = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+    // currently used buffer size
+    size_t bufused = 0;
 
-        // if expected buffer length is too large
-        // we won't fill it more
-        if(buffer.length + entlen > size) {
-            zdbfs_debug("[+] readdir: entry %ld will be too large, chunking\n", i);
-            break;
-        }
-
-        buffer.length += entlen;
-        limit += 1;
-    }
-
-    // allocate buffer large enough
+    // allocate buffer large enough (cannot be larger than received
+    // size parameter, let just allocate that one)
     if(!(buffer.buffer = calloc(buffer.length, 1)))
         zdbfs_sysfatal("readdir: calloc");
 
-    // fill in the buffer for each entries
-    struct stat stbuf;
-    memset(&stbuf, 0, sizeof(stbuf));
+    // keep track of a pointer we advance
+    // for each entries
     uint8_t *ptr = buffer.buffer;
 
-    for(off_t i = off; i < off + limit; i++) {
-        zdb_direntry_t *entry = dir->entries[i];
-        size_t cursize = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+    for(size_t d = diroff; d < DIRLIST_SIZE; d++) {
+        // ignore empty list
+        if(root->dirlist[d] == NULL)
+            continue;
 
-        stbuf.st_ino = entry->ino;
-        fuse_add_direntry(req, (char *) ptr, cursize, entry->name, &stbuf, i + 1);
+        zdb_dir_t *dir = root->dirlist[d];
 
-        ptr += cursize;
+        // zdbfs_debug("[+] readdir: list %lu: total entries: %u\n", d, dir->length);
+
+        for(off_t i = entoff; i < dir->length; i++) {
+            zdb_direntry_t *entry = dir->entries[i];
+            size_t entlen = fuse_add_direntry(req, NULL, 0, entry->name, NULL, 0);
+
+            if(bufused + entlen > buffer.length) {
+                zdbfs_debug("[+] readdir: not space to add more entries, next time\n");
+                // cannot hold more entries this time, let's
+                // return what we have now
+                goto done; // FIXME ?
+            }
+
+            // computing next offset
+            off_t newoff = (d << 56) | ((i + 1) & 0x00ffffffffffffff);
+
+            // printf("NEW OFF %lx [%lu / %lu]\n", newoff, d, i + 1);
+
+            // set ino id and entry
+            stbuf.st_ino = entry->ino;
+            fuse_add_direntry(req, (char *) ptr, buffer.length - bufused, entry->name, &stbuf, newoff);
+
+            ptr += entlen;
+            bufused += entlen;
+        }
+
+        // reset entry offset for next branch list
+        entoff = 0;
     }
 
-    fuse_reply_buf(req, buffer.buffer, buffer.length);
+done:
+    fuse_reply_buf(req, buffer.buffer, bufused);
 
+    // cleanup our buffer
     free(buffer.buffer);
 }
 
@@ -796,7 +831,7 @@ static void zdbfs_fuse_rmdir(fuse_req_t req, fuse_ino_t parent, const char *name
     if(!(target = zdbfs_inode_fetch(req, expected->ino)))
         return zdbfs_fuse_error(req, ENOENT, expected->ino);
 
-    zdb_dir_t *targetdir = zdbfs_inode_dir_get(target);
+    zdb_dir_t *targetdir = zdbfs_inode_dir_get(target, name);
     if(targetdir->length > 2) {
         zdbfs_debug("[+] rmdir: target directory not empty (length: %u)\n", targetdir->length);
         return zdbfs_fuse_error(req, ENOTEMPTY, expected->ino);

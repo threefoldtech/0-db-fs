@@ -10,6 +10,11 @@
 
     } zdb_nsinfo_t;
 
+    typedef struct zdb_info_t {
+        size_t seqsize;
+
+    } zdb_info_t;
+
     int zdbfs_zdb_connect(zdbfs_t *fs);
 
     void zdbfs_zdb_free(zdbfs_t *fs);
@@ -30,6 +35,9 @@
 
     // perform NSINFO command (namespace information)
     zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace);
+
+    // perform INFO command (server information)
+    zdb_info_t *zdb_info(zdb_t *remote);
 
     // perform SELECT command (select namespace)
     int zdb_select(zdb_t *remote, char *namespace, char *password);
