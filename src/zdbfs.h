@@ -79,11 +79,39 @@
 
     } __attribute__((packed)) zdb_direntry_t;
 
-    typedef struct zdb_dir_t {
+    // header used for serialization
+    typedef struct zdb_dir_header_t {
+        uint64_t ino;
         uint32_t length;
-        zdb_direntry_t *entries[];
+        // copy of zdb_dir_t without the list
+
+    } zdb_dir_header_t;
+
+    typedef struct zdb_dir_t {
+        uint64_t ino;              // inode number for that list
+        uint32_t length;           // amount of entries
+        zdb_direntry_t **entries;  // entries
 
     } __attribute__((packed)) zdb_dir_t;
+
+    // directories have indirection list which contains
+    // list of entries, but split over 128 lists, this
+    // avoid having one single large object contains all
+    // entries (and quickly reach 8 MB limit and is not
+    // efficient at all).
+    #define DIRLIST_SIZE 128
+
+    typedef struct zdb_dir_root_serial_t {
+        // save each inode id for each list branch
+        uint64_t dirlist[DIRLIST_SIZE];
+
+    } zdb_dir_root_serial_t;
+
+    typedef struct zdb_dir_root_t {
+        // memory representation of each list
+        zdb_dir_t *dirlist[DIRLIST_SIZE];
+
+    } zdb_dir_root_t;
 
     typedef struct zdb_inode_t {
         uint32_t mode;

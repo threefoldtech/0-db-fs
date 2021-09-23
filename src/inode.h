@@ -3,24 +3,27 @@
 
     int zdbfs_inode_init(zdbfs_t *fs);
 
+    size_t zdbfs_inode_dirlist_id(const char *name);
+
     void zdbfs_inode_dump(zdb_inode_t *inode);
     size_t zdbfs_offset_to_block(off_t off);
     size_t zdbfs_inode_dir_size(zdb_dir_t *dir);
     size_t zdbfs_inode_file_size(zdb_inode_t *inode);
-    zdb_dir_t *zdbfs_dir_new(uint64_t parent);
-    zdb_inode_t *zdbfs_inode_deserialize_dir(zdb_inode_t *inode, uint8_t *buffer, size_t length);
+    zdb_dir_t *zdbfs_dir_new();
+    zdb_inode_t *zdbfs_inode_deserialize_dir(zdb_t *backend, zdb_inode_t *inode, uint8_t *buffer, size_t length);
     zdb_inode_t *zdbfs_inode_deserialize_file(zdb_inode_t *inode, uint8_t *buffer, size_t length);
-    zdb_inode_t *zdbfs_inode_deserialize(uint8_t *buffer, size_t length);
+    zdb_inode_t *zdbfs_inode_deserialize(zdb_t *backend, uint8_t *buffer, size_t length);
     buffer_t zdbfs_inode_serialize_file(zdb_inode_t *inode);
-    buffer_t zdbfs_inode_serialize_dir(zdb_inode_t *inode);
+    buffer_t zdbfs_inode_serialize_dir(zdb_t *backend, zdb_inode_t *inode);
     size_t zdbfs_direntry_size(zdb_direntry_t *entry);
     zdb_direntry_t *zdbfs_direntry_new(uint64_t ino, const char *name);
     zdb_dir_t *zdbfs_dir_append(zdb_dir_t *dir, zdb_direntry_t *entry);
-    buffer_t zdbfs_inode_serialize(zdb_inode_t *inode);
+    buffer_t zdbfs_inode_serialize(zdb_t *backend, zdb_inode_t *inode);
     void zdbfs_inode_free(zdb_inode_t *inode);
 
-    zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode);
-    zdb_dir_t *zdbfs_inode_dir_set(zdb_inode_t *inode, zdb_dir_t *dir);
+    zdb_dir_t *zdbfs_inode_dir_get(zdb_inode_t *inode, const char *name);
+    zdb_dir_root_t *zdbfs_inode_dir_root_get(zdb_inode_t *inode);
+    zdb_dir_root_t *zdbfs_inode_dir_root_set(zdb_inode_t *inode, zdb_dir_root_t *root);
     zdb_dir_t *zdbfs_inode_dir_append(zdb_inode_t *inode, uint64_t ino, const char *name);
 
     void zdbfs_inode_block_set(zdb_inode_t *inode, size_t block, uint32_t blockid);
