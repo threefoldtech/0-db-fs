@@ -119,6 +119,13 @@ a fully working result file and compilation process.
 
 More information soon :)
 
+# Support
+
+Any workload should be supported on this filesystem, with some exceptions:
+- Opening a file in 'always append mode' will not have the expected behavior
+- There is no support of `O_TMPFILE` by fuse layer, which is a feature required by
+overlayfs, thus this is not supported. Overlayfs is used by Docker for example.
+
 # Specification
 
 Supported operations:
@@ -155,4 +162,3 @@ Known unsupported yet:
  - `open`: `O_APPEND` read flag
  - `open`: `O_RD_ONLY`, `O_WRONLY`, `O_RDWR` limitation, everything is allowed
  - User/group permissions internal checking, workaround with fuse default options
- - 
