@@ -71,6 +71,7 @@ zdb_t *zdb_new(char *host, int port, char *unixsock) {
     zdb->ctx = ctx;
     zdb->host = strdup(host);
     zdb->port = port;
+    zdb->namespace = strdup("(no namespace selected)");
 
     // FIXME: support unix socket
     // zdb->socket = strup(zdb->socket, unixsock);
@@ -259,7 +260,7 @@ zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace) {
     zdb_nsinfo_t *nsinfo;
     redisReply *reply;
 
-    zdbfs_debug("[+] zdb: nsinfo: request namespace: %s\n", namespace);
+    // zdbfs_debug("[+] zdb: nsinfo: request namespace: %s\n", namespace);
 
     if(!(reply = redisCommandArgv(remote->ctx, 2, argv, NULL))) {
         zdbfs_critical("zdb: nsinfo: %s: %s", namespace, remote->ctx->errstr);
