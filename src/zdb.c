@@ -505,22 +505,36 @@ int zdbfs_zdb_create(zdbfs_t *fs) {
         return 1;
     }
 
+    // FIXME: check if needed (avoid false error)
+    if(zdb_nsset(fs->metactx, fs->opts->meta_ns, "mode", "seq"))
+        zdbfs_error("zdb: could not auto set metadata namespace mode: %s", fs->opts->temp_ns);
+
     if(zdb_nsnew(fs->datactx, fs->opts->data_ns)) {
         zdbfs_critical("zdb: could not auto create data namespace: %s", fs->opts->data_ns);
         return 1;
     }
+
+
+    // FIXME: check if needed (avoid false error)
+    if(zdb_nsset(fs->datactx, fs->opts->data_ns, "mode", "seq"))
+        zdbfs_error("zdb: could not auto set data namespace mode: %s", fs->opts->data_ns);
+
 
     if(zdb_nsnew(fs->tempctx, fs->opts->temp_ns)) {
         zdbfs_critical("zdb: could not auto create temporary namespace: %s", fs->opts->temp_ns);
         return 1;
     }
 
-    if(zdb_nsset(fs->metactx, fs->opts->temp_ns, "public", "0")) {
+    // FIXME: check if needed (avoid false error)
+    if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "mode", "seq"))
+        zdbfs_critical("zdb: could not auto set temporary namespace mode: %s", fs->opts->temp_ns);
+
+    if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "public", "0")) {
         zdbfs_critical("zdb: could not auto set temporary namespace public: %s", fs->opts->temp_ns);
         return 1;
     }
 
-    if(zdb_nsset(fs->metactx, fs->opts->temp_ns, "password", fs->opts->temp_pass)) {
+    if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "password", fs->opts->temp_pass)) {
         zdbfs_critical("zdb: could not auto set temporary namespace password: %s",fs->opts->temp_ns );
         return 1;
     }
