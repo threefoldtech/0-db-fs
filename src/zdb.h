@@ -7,6 +7,7 @@
         size_t entries;
         size_t datasize;
         size_t nextid;
+        int password;
 
     } zdb_nsinfo_t;
 

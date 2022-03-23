@@ -210,6 +210,17 @@ static size_t zdb_nsinfo_sizeval(char *buffer, char *entry) {
     return strtoumax(match, NULL, 10);
 }
 
+static int zdb_nsinfo_bool(char *buffer, char *entry) {
+    char *match;
+
+    if(!(match = strstr(buffer, entry)))
+        return 0;
+
+    match += strlen(entry) + 2;
+
+    return (strncmp(match, "yes", 3) == 0);
+}
+
 static size_t zdb_nsinfo_internal_id(char *buffer, char *entry) {
     char *match;
     char numbuf[64];
@@ -274,6 +285,7 @@ zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace) {
     nsinfo->entries = zdb_nsinfo_sizeval(reply->str, "entries");
     nsinfo->datasize = zdb_nsinfo_sizeval(reply->str, "data_size_bytes");
     nsinfo->nextid = zdb_nsinfo_internal_id(reply->str, "next_internal_id");
+    nsinfo->password = zdb_nsinfo_bool(reply->str, "password");
 
     freeReplyObject(reply);
 
