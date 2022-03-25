@@ -1176,6 +1176,32 @@ static int zdbfs_inode_prepare_namespace(zdb_t *backend, zdbfs_header_t *header,
     return 0;
 }
 
+int zdbfs_inode_init_readonly(zdbfs_t *fs) {
+    zdb_nsinfo_t *nsinfo;
+
+    if(!(nsinfo = zdb_nsinfo(fs->metactx, fs->opts->meta_ns)))
+        return 0;
+
+    if(nsinfo->password && !fs->opts->meta_pass) {
+        zdbfs_debug("[+] inode: zdb warning: metadata namespace not writable\n");
+        fs->readonly = 1;
+        return 1;
+    }
+
+    if(!(nsinfo = zdb_nsinfo(fs->datactx, fs->opts->meta_ns)))
+        return 0;
+
+    if(nsinfo->password && !fs->opts->data_pass) {
+        zdbfs_debug("[+] inode: zdb warning: data namespace not writable\n");
+        fs->readonly = 1;
+        return 1;
+    }
+
+    zdbfs_debug("[+] inode: zdb namespace are writable\n");
+
+    return 0;
+}
+
 // first initialization of the fs
 //
 // entry 0 will be metadata about information regarding this
@@ -1288,6 +1314,8 @@ int zdbfs_inode_init(zdbfs_t *fs) {
         zdbfs_inode_prepare_namespace(fs->tempctx, &header, "ZDBFST");
     }
 
+    // check if namespaces are in read-only mode
+    zdbfs_inode_init_readonly(fs);
 
     return 0;
 }
@@ -1298,6 +1326,11 @@ int zdbfs_inode_init_release(zdbfs_t *fs) {
     uint64_t response;
 
     zdbfs_debug("[+] filesystem: release in-use flag\n");
+
+    if(fs->readonly) {
+        zdbfs_debug("[+] filesystem: namespace in read-only, skipping release flag\n");
+        return 0;
+    }
 
     if(!(reply = zdb_get(fs->metactx, 0))) {
         zdbfs_error("[-] filesystem: release: %s\n", "could not fetch header entry");

@@ -24,6 +24,19 @@ int zdbfs_cache_enabled(zdbfs_t *fs) {
     return fs->caching;
 }
 
+// cache can be enabled but if namespaces
+// are read-only we can't write cache to the
+// backend
+int zdbfs_cache_writable(zdbfs_t *fs) {
+    /*
+    if(fs->readonly)
+        zdbfs_lowdebug("cache: namespaces in read-only mode [%d]", fs->readonly);
+    */
+
+    return !fs->readonly;
+}
+
+
 static void zdbfs_cache_stats_hit(zdbfs_t *fs) {
     fs->stats.cache_hit += 1;
 }
@@ -518,6 +531,9 @@ static int zdbfs_cache_block_release(zdbfs_t *fs, inocache_t *cache) {
     if(cache->blocks == 0)
         return 1;
 
+    if(!zdbfs_cache_writable(fs))
+        return 1;
+
     zdbfs_debug("[+] cache: release: blocks available, flushing\n");
 
     for(ssize_t i = 0; i < cache->blocks; i++) {
@@ -563,6 +579,10 @@ void zdbfs_cache_drop(fuse_req_t req, inocache_t *cache) {
     if(!zdbfs_cache_enabled(fs))
         return;
 
+    if(!zdbfs_cache_writable(fs))
+        return;
+
+
     zdbfs_lowdebug("cache: drop inode: %lu", cache->inoid);
 
     inobranch_t *branch = zdbfs_cache_branch_get(fs, cache->inoid);
@@ -579,6 +599,9 @@ int zdbfs_cache_release(fuse_req_t req, inocache_t *cache) {
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
+        return 1;
+
+    if(!zdbfs_cache_writable(fs))
         return 1;
 
     zdbfs_lowdebug("cache: release inode: %lu", cache->inoid);
@@ -650,6 +673,9 @@ size_t zdbfs_cache_sync(zdbfs_t *fs) {
     if(!zdbfs_cache_enabled(fs))
         return 0;
 
+    if(!zdbfs_cache_writable(fs))
+        return 0;
+
     // check if the temporary namespace needs to be reset
     zdbfs_cache_temp_cleanup(fs);
 
@@ -703,6 +729,9 @@ size_t zdbfs_cache_clean(zdbfs_t *fs) {
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
+        return 0;
+
+    if(!zdbfs_cache_writable(fs))
         return 0;
 
     // clean and unallocate each branches

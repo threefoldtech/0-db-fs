@@ -269,6 +269,7 @@
         stats_t stats;            // global statistics
         uint64_t fssize;          // filesystem maximum size to report
         size_t cachesize;         // amount of blocks to keep in cache
+        int readonly;             // readonly namespaces (and filesystem)
 
         zdbfs_options *opts;
 

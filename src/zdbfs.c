@@ -306,7 +306,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
     size_t diroff = (off & 0xff00000000000000) >> 56;
     size_t entoff = (off & 0x00ffffffffffffff);
 
-    zdbfs_lowdebug("[+] readdir: offset: %lx, dirlist: %lu, entry: %lu", off, diroff, entoff);
+    zdbfs_lowdebug("readdir: offset: %lx, dirlist: %lu, entry: %lu", off, diroff, entoff);
 
     buffer_t buffer;
     buffer.length = size;
