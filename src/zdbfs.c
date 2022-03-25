@@ -354,7 +354,7 @@ static void zdbfs_fuse_readdir(fuse_req_t req, fuse_ino_t ino, size_t size, off_
 
             // set ino id and entry
             stbuf.st_ino = entry->ino;
-            stbuf.st_mode = S_IFREG; // FIXME: workaround for d_type
+            // stbuf.st_mode = S_IFREG; // FIXME: workaround for d_type
             fuse_add_direntry(req, (char *) ptr, buffer.length - bufused, entry->name, &stbuf, newoff);
 
             ptr += entlen;
