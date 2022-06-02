@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <stddef.h>
 #include "zdbfs.h"
+#include "cache.h"
 
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
@@ -108,6 +109,10 @@ int zdbfs_system_signal(int signal, void (*function)(int)) {
 
 void zdbfs_system_sighandler(int signal) {
     switch(signal) {
+        case SIGUSR1:
+            zdbfs_cache_stats(__zdbfs_instance);
+            return;
+
         case SIGSEGV:
             fprintf(stderr, "[-] fatal: segmentation fault\n");
             zdbfs_system_backtrace();

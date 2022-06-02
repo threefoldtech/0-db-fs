@@ -34,6 +34,7 @@
         #define zdbfs_error(fmt, ...)    { printf(   red("[-] " fmt), __VA_ARGS__); }
         #define zdbfs_success(fmt, ...)  { printf( green("[+] " fmt), __VA_ARGS__); }
         #define zdbfs_warning(fmt, ...)  { printf(yellow("[!] " fmt), __VA_ARGS__); }
+        #define zdbfs_notice(fmt, ...)   { printf(  grey("[.] " fmt), __VA_ARGS__); }
         #define zdbfs_lowdebug(fmt, ...) { printf(  grey("[.] " fmt), __VA_ARGS__); }
         #define zdbfs_verbose(...)       { printf(__VA_ARGS__); }
         #define zdbfs_debug(...)         { printf(__VA_ARGS__); }
@@ -48,6 +49,7 @@
         #define zdbfs_error(fmt, ...)    { printf(   red("[-] " fmt), __VA_ARGS__); }
         #define zdbfs_success(fmt, ...)  { printf( green("[+] " fmt), __VA_ARGS__); }
         #define zdbfs_warning(fmt, ...)  { printf(yellow("[!] " fmt), __VA_ARGS__); }
+        #define zdbfs_notice(fmt, ...)   { printf(  grey("[.] " fmt), __VA_ARGS__); }
         #define zdbfs_lowdebug(...)      __disabled
         #define zdbfs_verbose(...)       { printf(__VA_ARGS__); }
         #define zdbfs_debug(...)         __disabled
@@ -274,6 +276,8 @@
         zdbfs_options *opts;
 
     } zdbfs_t;
+
+    extern zdbfs_t *__zdbfs_instance;
 
     typedef struct buffer_t {
         void *buffer;

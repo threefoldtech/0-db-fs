@@ -825,16 +825,16 @@ size_t zdbfs_cache_stats_blocksize(zdbfs_t *fs) {
 }
 
 void zdbfs_cache_stats(zdbfs_t *fs) {
-    zdbfs_lowdebug("cache: total hit   : %lu", fs->stats.cache_hit);
-    zdbfs_lowdebug("cache: total miss  : %lu", fs->stats.cache_miss);
-    zdbfs_lowdebug("cache: total full  : %lu", fs->stats.cache_full);
-    zdbfs_lowdebug("cache: linear flush: %lu", fs->stats.cache_linear_flush);
-    zdbfs_lowdebug("cache: random flush: %lu", fs->stats.cache_random_flush);
+    zdbfs_notice("cache: total hit   : %lu", fs->stats.cache_hit);
+    zdbfs_notice("cache: total miss  : %lu", fs->stats.cache_miss);
+    zdbfs_notice("cache: total full  : %lu", fs->stats.cache_full);
+    zdbfs_notice("cache: linear flush: %lu", fs->stats.cache_linear_flush);
+    zdbfs_notice("cache: random flush: %lu", fs->stats.cache_random_flush);
 
     // runtime cache disabled
     if(!zdbfs_cache_enabled(fs))
         return;
 
-    zdbfs_lowdebug("cache: entries     : %lu", zdbfs_cache_stats_entries(fs));
-    zdbfs_lowdebug("cache: blocksize   : %lu bytes", zdbfs_cache_stats_blocksize(fs));
+    zdbfs_notice("cache: entries     : %lu", zdbfs_cache_stats_entries(fs));
+    zdbfs_notice("cache: blocksize   : %lu bytes", zdbfs_cache_stats_blocksize(fs));
 }

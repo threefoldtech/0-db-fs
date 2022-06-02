@@ -21,6 +21,10 @@
 #include "cache.h"
 #include "system.h"
 
+// global zdbfs object used by signal handler
+// this object is never used except for system edge-case
+zdbfs_t *__zdbfs_instance = NULL;
+
 //
 // volatile inode
 //
@@ -1292,11 +1296,13 @@ int main(int argc, char *argv[]) {
     struct fuse_session *se;
     struct fuse_cmdline_opts fopts;
     zdbfs_t zdbfs;
+    __zdbfs_instance = &zdbfs;
 
     zdbfs_info("initializing zdbfs v%s", ZDBFS_VERSION);
 
     // catch segmentation fault for backtrace
     zdbfs_system_signal(SIGSEGV, zdbfs_system_sighandler);
+    zdbfs_system_signal(SIGUSR1, zdbfs_system_sighandler);
 
     if(zdbfs_init_args(&zdbfs, &args, &fopts) != 0)
         return 1;
