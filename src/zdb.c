@@ -41,18 +41,31 @@ static redisContext *zdb_new_ctx(char *host, int port, char *unixsock) {
     (void) unixsock;
     redisContext *ctx;
 
-    // FIXME: support unix socket
+    // unix socket prefered method
+    if(unixsock) {
+        if(!(ctx = redisConnectUnix(unixsock))) {
+            zdbfs_critical("zdb: connect: [%s]: cannot initialize context", unixsock);
+            return NULL;
+        }
 
-    if(!(ctx = redisConnect(host, port))) {
-        zdbfs_critical("zdb: connect: [%s:%d]: cannot initialize context", host, port);
-        return NULL;
-    }
+        if(ctx->err) {
+            zdbfs_critical("zdb: connect: [%s]: %s", unixsock, ctx->errstr);
+            // we keep going, the context is still valid and will trigger
+            // an error on usage, but this is not fatal
+            return ctx;
+        }
 
-    if(ctx->err) {
-        zdbfs_critical("zdb: connect: [%s:%d]: %s", host, port, ctx->errstr);
-        // we keep going, the context is still valid and will trigger
-        // an error on usage, but this is not fatal
-        return ctx;
+
+    } else {
+        if(!(ctx = redisConnect(host, port))) {
+            zdbfs_critical("zdb: connect: [%s:%d]: cannot initialize context", host, port);
+            return NULL;
+        }
+
+        if(ctx->err) {
+            zdbfs_critical("zdb: connect: [%s:%d]: %s", host, port, ctx->errstr);
+            return ctx;
+        }
     }
 
     return ctx;
@@ -73,8 +86,8 @@ zdb_t *zdb_new(char *host, int port, char *unixsock) {
     zdb->port = port;
     zdb->namespace = strdup("(no namespace selected)");
 
-    // FIXME: support unix socket
-    // zdb->socket = strup(zdb->socket, unixsock);
+    if(unixsock)
+        zdb->socket = strdup(unixsock);
 
     return zdb;
 }
@@ -558,8 +571,9 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     // metadata
     //
-    zdbfs_debug("[+] zdb: connecting metadata zdb [%s, %d]\n", fs->opts->meta_host, fs->opts->meta_port);
-    if(!(fs->metactx = zdb_new(fs->opts->meta_host, fs->opts->meta_port, NULL)))
+    zdbfs_debug("[+] zdb: connecting metadata zdb\n");
+
+    if(!(fs->metactx = zdb_new(fs->opts->meta_host, fs->opts->meta_port, fs->opts->meta_unix)))
         return 1;
 
     // could not initialize connection
@@ -569,9 +583,9 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     // data
     //
-    zdbfs_debug("[+] zdb: connecting datablock zdb [%s, %d]\n", fs->opts->data_host, fs->opts->data_port);
+    zdbfs_debug("[+] zdb: connecting datablock zdb\n");
 
-    if(!(fs->datactx = zdb_new(fs->opts->data_host, fs->opts->data_port, NULL)))
+    if(!(fs->datactx = zdb_new(fs->opts->data_host, fs->opts->data_port, fs->opts->data_unix)))
         return 1;
 
     // could not initialize connection
@@ -581,9 +595,9 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     // temporary blocks
     //
-    zdbfs_debug("[+] zdb: connecting temporary zdb [%s, %d]\n", fs->opts->temp_host, fs->opts->temp_port);
+    zdbfs_debug("[+] zdb: connecting temporary zdb\n");
 
-    if(!(fs->tempctx = zdb_new(fs->opts->temp_host, fs->opts->temp_port, NULL)))
+    if(!(fs->tempctx = zdb_new(fs->opts->temp_host, fs->opts->temp_port, fs->opts->temp_unix)))
         return 1;
 
     // could not initialize connection

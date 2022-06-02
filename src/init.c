@@ -19,17 +19,20 @@
 
 static struct fuse_opt zdbfs_opts[] = {
     {"mh=%s", zdb_opt_field(meta_host), 0},
+    {"mu=%s", zdb_opt_field(meta_unix), 0},
     {"mp=%d", zdb_opt_field(meta_port), 0},
     {"mn=%s", zdb_opt_field(meta_ns), 0},
     {"ms=%s", zdb_opt_field(meta_pass), 0},
 
     {"dh=%s", zdb_opt_field(data_host), 0},
+    {"du=%s", zdb_opt_field(data_unix), 0},
     {"dp=%d", zdb_opt_field(data_port), 0},
     {"dn=%s", zdb_opt_field(data_ns), 0},
     {"ds=%s", zdb_opt_field(data_pass), 0},
 
 
     {"th=%s", zdb_opt_field(temp_host), 0},
+    {"tu=%s", zdb_opt_field(temp_unix), 0},
     {"tp=%d", zdb_opt_field(temp_port), 0},
     {"tn=%s", zdb_opt_field(temp_ns), 0},
     {"ts=%s", zdb_opt_field(temp_pass), 0},

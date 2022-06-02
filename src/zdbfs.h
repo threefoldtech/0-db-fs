@@ -220,16 +220,19 @@
 
     typedef struct zdbfs_options {
         char *meta_host;      // metadata zdb host
+        char *meta_unix;      // metadata zdb unix socket path
         int meta_port;        // metadata zdb port
         char *meta_ns;        // metadata namespace name
         char *meta_pass;      // metadata namespace password (optional)
 
         char *data_host;      // data zdb host
+        char *data_unix;      // data zdb unix socket path
         int data_port;        // data zdb port
         char *data_ns;        // data namespace name
         char *data_pass;      // data namespace password (optional)
 
         char *temp_host;      // temporary zdb host
+        char *temp_unix;      // temporary zdb unix socket path
         int temp_port;        // temporary zdb port
         char *temp_ns;        // temporary zdb namespace name
         char *temp_pass;      // temporary namespace name (mandatory)
