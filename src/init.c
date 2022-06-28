@@ -18,6 +18,10 @@
 #define zdb_opt_field(f) offsetof(zdbfs_options, f)
 
 static struct fuse_opt zdbfs_opts[] = {
+    {"host=%s", zdb_opt_field(global_host), 0},
+    {"unix=%s", zdb_opt_field(global_unix), 0},
+    {"port=%d", zdb_opt_field(global_port), 0},
+
     {"mh=%s", zdb_opt_field(meta_host), 0},
     {"mu=%s", zdb_opt_field(meta_unix), 0},
     {"mp=%d", zdb_opt_field(meta_port), 0},
@@ -45,6 +49,29 @@ static struct fuse_opt zdbfs_opts[] = {
     FUSE_OPT_END
 };
 
+static int zdbfs_setif_int(int source, int global, int fallback) {
+    if(source != 0)
+        return source;
+
+    if(source == 0 && global != 0)
+        return global;
+
+    return fallback;
+}
+
+static char *zdbfs_setif_str(char *source, char *global, char *fallback) {
+    if(source != NULL)
+        return source;
+
+    if(source == NULL && global != NULL)
+        return strdup(global);
+
+    if(fallback)
+        return strdup(fallback);
+
+    return NULL;
+}
+
 int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opts *fopts) {
     // setting default values
     memset(fs, 0, sizeof(zdbfs_t));
@@ -56,19 +83,6 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     fs->opts->background = -1;
     fs->opts->autons = -1;
     fs->opts->cachesize = ZDBFS_BLOCKS_CACHE_LIMIT;
-
-    fs->opts->meta_host = strdup("localhost");
-    fs->opts->meta_port = 9900;
-    fs->opts->meta_ns = strdup("zdbfs-meta");
-
-    fs->opts->data_host = strdup("localhost");
-    fs->opts->data_port = 9900;
-    fs->opts->data_ns = strdup("zdbfs-data");
-
-    fs->opts->temp_host = strdup("localhost");
-    fs->opts->temp_port = 9900;
-    fs->opts->temp_ns = strdup("zdbfs-temp");
-    fs->opts->temp_pass = strdup("hello");
 
     // parsing fuse options
     if(fuse_parse_cmdline(args, fopts) != 0)
@@ -95,6 +109,22 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     // parsing zdbfs options
     if(fuse_opt_parse(args, fs->opts, zdbfs_opts, NULL) == -1)
         return 1;
+
+    fs->opts->meta_host = zdbfs_setif_str(fs->opts->meta_host, fs->opts->global_host, "localhost");
+    fs->opts->meta_port = zdbfs_setif_int(fs->opts->meta_port, fs->opts->global_port, 9900);
+    fs->opts->meta_unix = zdbfs_setif_str(fs->opts->meta_unix, fs->opts->global_unix, NULL);
+    fs->opts->meta_ns = strdup("zdbfs-meta");
+
+    fs->opts->data_host = zdbfs_setif_str(fs->opts->data_host, fs->opts->global_host, "localhost");
+    fs->opts->data_port = zdbfs_setif_int(fs->opts->data_port, fs->opts->global_port, 9900);
+    fs->opts->data_unix = zdbfs_setif_str(fs->opts->data_unix, fs->opts->global_unix, NULL);
+    fs->opts->data_ns = strdup("zdbfs-data");
+
+    fs->opts->temp_host = zdbfs_setif_str(fs->opts->temp_host, fs->opts->global_host, "localhost");
+    fs->opts->temp_port = zdbfs_setif_int(fs->opts->temp_port, fs->opts->global_port, 9900);
+    fs->opts->temp_unix = zdbfs_setif_str(fs->opts->temp_unix, fs->opts->global_unix, NULL);
+    fs->opts->temp_ns = strdup("zdbfs-temp");
+    fs->opts->temp_pass = strdup("hello");
 
     return 0;
 }

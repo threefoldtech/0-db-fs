@@ -577,7 +577,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
         return 1;
 
     // could not initialize connection
-    if(fs->metactx->ctx->err == REDIS_ERR_IO)
+    if(fs->metactx->ctx->err != 0)
         return 1;
 
     //
@@ -589,7 +589,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
         return 1;
 
     // could not initialize connection
-    if(fs->datactx->ctx->err == REDIS_ERR_IO)
+    if(fs->datactx->ctx->err != 0)
         return 1;
 
     //
@@ -601,7 +601,7 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
         return 1;
 
     // could not initialize connection
-    if(fs->tempctx->ctx->err == REDIS_ERR_IO)
+    if(fs->tempctx->ctx->err != 0)
         return 1;
 
     //

@@ -219,6 +219,10 @@
     #define ZDBFS_STATS_VERSION 2
 
     typedef struct zdbfs_options {
+        char *global_host;    // one-time zdb host (to apply to metadata, data, temp)
+        char *global_unix;    // one-time zdb unix socket path
+        int global_port;      // one-time zdb port
+
         char *meta_host;      // metadata zdb host
         char *meta_unix;      // metadata zdb unix socket path
         int meta_port;        // metadata zdb port
