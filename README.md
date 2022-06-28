@@ -50,18 +50,25 @@ You can configure zdbfs via runtime arguments to pass via `-o` during mount, eg:
 
 Available options (with their default value):
 ```
+host=(not set)      unique hostname to use for meta, data and temp
+port=(not set)      unique port to use for meta, data and temp
+unix=(not set)      unique unix socket path to use for meta, data and temp
+
 mh=localhost        metadata zdb hostname
 mp=9900             metadata zdb port
+mu=(not set)        metadata zdb unix socket path (optional)
 mn=zdbfs-meta       metadata namespace name
 ms=(not set)        metadata namespace password (optional)
 
 dh=localhost        datablock zdb hostname
 dp=9900             datablock zdb port
+du=(not set)        datablock zdb unix socket path (optional)
 dn=zdbfs-data       datablock namespace name
 ds=(not set)        datablock namespace password (optional)
 
 th=localhost        temporary zdb hostname
 tp=9900             temporary zdb port
+tu=(not set)        temporary zdb unix socket path (optional)
 tn=zdbfs-temp       temporary namespace name
 ts=hello            temporary namespace password (mandatory)
 
