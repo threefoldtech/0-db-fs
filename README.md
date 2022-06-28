@@ -72,6 +72,9 @@ tu=(not set)        temporary zdb unix socket path (optional)
 tn=zdbfs-temp       temporary namespace name
 ts=hello            temporary namespace password (mandatory)
 
+size=(10G)          runtime filesystem reported size (for debug purpose)
+                    size needs to be in bytes, default is 10737418240 (10G)
+
 nocache             disable runtime cache (for debug purpose)
 autons              try to create required namespace on runtime
 background          run in background when filesystem is ready

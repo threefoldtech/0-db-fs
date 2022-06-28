@@ -1082,7 +1082,7 @@ static void zdbfs_fuse_statfs(fuse_req_t req, fuse_ino_t ino) {
         return zdbfs_fuse_error(req, EIO, ino);
 
     // hardcode 10G for debug
-    uint64_t sizefs = 10ull * 1024 * 1024 * 1024;
+    uint64_t sizefs = fs->fssize;
     size_t fragment = 1024;  // optional, could be 1 and no division
 
     // maximum inodes is uint64_t maximun value

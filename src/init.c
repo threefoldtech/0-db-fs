@@ -41,6 +41,8 @@ static struct fuse_opt zdbfs_opts[] = {
     {"tn=%s", zdb_opt_field(temp_ns), 0},
     {"ts=%s", zdb_opt_field(temp_pass), 0},
 
+    {"size=%llu", zdb_opt_field(size), 0},
+
     {"nocache",      zdb_opt_field(nocache), 0},
     {"autons",       zdb_opt_field(autons), 0},
     {"background",   zdb_opt_field(background), 0},
@@ -83,6 +85,7 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     fs->opts->background = -1;
     fs->opts->autons = -1;
     fs->opts->cachesize = ZDBFS_BLOCKS_CACHE_LIMIT;
+    fs->opts->size = 10ull * 1024 * 1024 * 1024;
 
     // parsing fuse options
     if(fuse_parse_cmdline(args, fopts) != 0)
@@ -139,8 +142,10 @@ int zdbfs_init_runtime(zdbfs_t *fs) {
     fs->autons = (fs->opts->autons == 0) ? 1 : 0;
     fs->logfile = fs->opts->logfile;
     fs->cachesize = fs->opts->cachesize;
+    fs->fssize = fs->opts->size;
 
     zdbfs_verbose("[+] blocks cache size: %lu KB\n", (fs->cachesize * ZDBFS_BLOCK_SIZE) / 1024);
+    zdbfs_verbose("[+] virtual filesystem size: %.1f GB\n", GB(fs->fssize));
 
     // initialize cache
     if(!(fs->tmpblock = malloc(ZDBFS_BLOCK_SIZE)))

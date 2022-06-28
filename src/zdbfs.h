@@ -247,6 +247,8 @@
         char *logfile;        // logfile where logging actions
         int cachesize;        // amount of blocks to keep in cache
 
+        size_t size;          // filesystem size (for debug purpose)
+
     } zdbfs_options;
 
     typedef struct zdb_t {
