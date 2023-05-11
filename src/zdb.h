@@ -3,11 +3,18 @@
 
     extern int zdb_errno;
 
+    typedef enum zdb_mode_t {
+        USER,
+        SEQ
+
+    } zdb_mode_t;
+
     typedef struct zdb_nsinfo_t {
         size_t entries;
         size_t datasize;
         size_t nextid;
         int password;
+        zdb_mode_t mode;
 
     } zdb_nsinfo_t;
 

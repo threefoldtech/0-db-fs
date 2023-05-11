@@ -292,6 +292,12 @@ zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace) {
         return NULL;
     }
 
+    if(reply->type == REDIS_REPLY_ERROR) {
+        zdbfs_debug("[+] zdb: %s: nsinfo failed: %s\n", namespace, reply->str);
+        freeReplyObject(reply);
+        return NULL;
+    }
+
     if(!(nsinfo = calloc(sizeof(zdb_nsinfo_t), 1)))
         zdbfs_sysfatal("zdb: nsinfo: calloc");
 
@@ -299,6 +305,13 @@ zdb_nsinfo_t *zdb_nsinfo(zdb_t *remote, char *namespace) {
     nsinfo->datasize = zdb_nsinfo_sizeval(reply->str, "data_size_bytes");
     nsinfo->nextid = zdb_nsinfo_internal_id(reply->str, "next_internal_id");
     nsinfo->password = zdb_nsinfo_bool(reply->str, "password");
+
+    if(strstr(reply->str, "mode: sequential")) {
+        nsinfo->mode = SEQ;
+
+    } else if(strstr(reply->str, "mode: userkey")) {
+        nsinfo->mode = USER;
+    }
 
     freeReplyObject(reply);
 
@@ -524,35 +537,61 @@ int zdb_del(zdb_t *remote, uint64_t id) {
 
 int zdbfs_zdb_create(zdbfs_t *fs) {
     zdbfs_verbose("[+] zdb: auto creating namespace\n");
+    zdb_nsinfo_t *info;
 
-    if(zdb_nsnew(fs->metactx, fs->opts->meta_ns)) {
-        zdbfs_critical("zdb: could not auto create metadata namespace: %s", fs->opts->meta_ns);
-        return 1;
+    // metadata
+    // checking if namespace already exists
+    if(!(info = zdb_nsinfo(fs->metactx, fs->opts->meta_ns))) {
+        if(zdb_nsnew(fs->metactx, fs->opts->meta_ns)) {
+            zdbfs_critical("zdb: could not auto create metadata namespace: %s", fs->opts->meta_ns);
+            return 1;
+        }
+
+        // fetching newly created information
+        info = zdb_nsinfo(fs->metactx, fs->opts->meta_ns);
     }
 
-    // FIXME: check if needed (avoid false error)
-    if(zdb_nsset(fs->metactx, fs->opts->meta_ns, "mode", "seq"))
-        zdbfs_error("zdb: could not auto set metadata namespace mode: %s", fs->opts->temp_ns);
-
-    if(zdb_nsnew(fs->datactx, fs->opts->data_ns)) {
-        zdbfs_critical("zdb: could not auto create data namespace: %s", fs->opts->data_ns);
-        return 1;
+    if(info->mode != SEQ) {
+        if(zdb_nsset(fs->metactx, fs->opts->meta_ns, "mode", "seq")) {
+            zdbfs_critical("zdb: could not auto set metadata namespace mode: %s", fs->opts->meta_ns);
+            return 1;
+        }
     }
 
+    // data
+    // checking if namespace already exists
+    if(!(info = zdb_nsinfo(fs->datactx, fs->opts->data_ns))) {
+        if(zdb_nsnew(fs->datactx, fs->opts->data_ns)) {
+            zdbfs_critical("zdb: could not auto create data namespace: %s", fs->opts->data_ns);
+            return 1;
+        }
 
-    // FIXME: check if needed (avoid false error)
-    if(zdb_nsset(fs->datactx, fs->opts->data_ns, "mode", "seq"))
-        zdbfs_error("zdb: could not auto set data namespace mode: %s", fs->opts->data_ns);
-
-
-    if(zdb_nsnew(fs->tempctx, fs->opts->temp_ns)) {
-        zdbfs_critical("zdb: could not auto create temporary namespace: %s", fs->opts->temp_ns);
-        return 1;
+        info = zdb_nsinfo(fs->datactx, fs->opts->data_ns);
     }
 
-    // FIXME: check if needed (avoid false error)
-    if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "mode", "seq"))
-        zdbfs_critical("zdb: could not auto set temporary namespace mode: %s", fs->opts->temp_ns);
+    if(info->mode != SEQ) {
+        if(zdb_nsset(fs->datactx, fs->opts->data_ns, "mode", "seq")) {
+            zdbfs_critical("zdb: could not auto set data namespace mode: %s", fs->opts->data_ns);
+            return 1;
+        }
+    }
+
+    // temporary
+    if(!(info = zdb_nsinfo(fs->tempctx, fs->opts->temp_ns))) {
+        if(zdb_nsnew(fs->tempctx, fs->opts->temp_ns)) {
+            zdbfs_critical("zdb: could not auto create temporary namespace: %s", fs->opts->temp_ns);
+            return 1;
+        }
+
+        info = zdb_nsinfo(fs->tempctx, fs->opts->temp_ns);
+    }
+
+    if(info->mode != SEQ) {
+        if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "mode", "seq")) {
+            zdbfs_critical("zdb: could not auto set temporary namespace mode: %s", fs->opts->temp_ns);
+            return 1;
+        }
+    }
 
     if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "public", "0")) {
         zdbfs_critical("zdb: could not auto set temporary namespace public: %s", fs->opts->temp_ns);
@@ -560,7 +599,7 @@ int zdbfs_zdb_create(zdbfs_t *fs) {
     }
 
     if(zdb_nsset(fs->tempctx, fs->opts->temp_ns, "password", fs->opts->temp_pass)) {
-        zdbfs_critical("zdb: could not auto set temporary namespace password: %s",fs->opts->temp_ns );
+        zdbfs_critical("zdb: could not auto set temporary namespace password: %s",fs->opts->temp_ns);
         return 1;
     }
 
@@ -607,8 +646,10 @@ int zdbfs_zdb_connect(zdbfs_t *fs) {
     //
     // auto-create namespace flag
     //
-    if(fs->autons)
-        zdbfs_zdb_create(fs);
+    if(fs->autons) {
+        if(zdbfs_zdb_create(fs) != 0)
+            return 1;
+    }
 
     //
     // select namespaces
