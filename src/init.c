@@ -87,6 +87,11 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     fs->opts->cachesize = ZDBFS_BLOCKS_CACHE_LIMIT;
     fs->opts->size = 10ull * 1024 * 1024 * 1024;
 
+    fs->opts->meta_ns = strdup("zdbfs-meta");
+    fs->opts->data_ns = strdup("zdbfs-data");
+    fs->opts->temp_ns = strdup("zdbfs-temp");
+    fs->opts->temp_pass = strdup("hello");
+
     // parsing fuse options
     if(fuse_parse_cmdline(args, fopts) != 0)
         return 1;
@@ -116,18 +121,14 @@ int zdbfs_init_args(zdbfs_t *fs, struct fuse_args *args, struct fuse_cmdline_opt
     fs->opts->meta_host = zdbfs_setif_str(fs->opts->meta_host, fs->opts->global_host, "localhost");
     fs->opts->meta_port = zdbfs_setif_int(fs->opts->meta_port, fs->opts->global_port, 9900);
     fs->opts->meta_unix = zdbfs_setif_str(fs->opts->meta_unix, fs->opts->global_unix, NULL);
-    fs->opts->meta_ns = strdup("zdbfs-meta");
 
     fs->opts->data_host = zdbfs_setif_str(fs->opts->data_host, fs->opts->global_host, "localhost");
     fs->opts->data_port = zdbfs_setif_int(fs->opts->data_port, fs->opts->global_port, 9900);
     fs->opts->data_unix = zdbfs_setif_str(fs->opts->data_unix, fs->opts->global_unix, NULL);
-    fs->opts->data_ns = strdup("zdbfs-data");
 
     fs->opts->temp_host = zdbfs_setif_str(fs->opts->temp_host, fs->opts->global_host, "localhost");
     fs->opts->temp_port = zdbfs_setif_int(fs->opts->temp_port, fs->opts->global_port, 9900);
     fs->opts->temp_unix = zdbfs_setif_str(fs->opts->temp_unix, fs->opts->global_unix, NULL);
-    fs->opts->temp_ns = strdup("zdbfs-temp");
-    fs->opts->temp_pass = strdup("hello");
 
     return 0;
 }
